@@ -1,0 +1,123 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "PlaybookName": {
+            "defaultValue": "Isolate-AzureVM",
+            "type": "string"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2019-05-01",
+            "name": "[parameters('PlaybookName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "Microsoft_Sentinel_Incident": {
+                            "type": "ApiConnectionWebhook",
+                            "inputs": {
+                                "body": {
+                                    "callback_url": "@{listCallbackUrl()}"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "path": "/incident-creation/subscriptions/@{encodeURIComponent('subscriptionId')}/resourceGroups/@{encodeURIComponent('rg')}/workspaces/@{encodeURIComponent('workspace')}/alerts"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Entities_-_Get_Hosts": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "body": "@triggerBody()?['object']?['properties']?['relatedEntities']",
+                                "path": "/entities/host"
+                            }
+                        },
+                        "For_each_Host": {
+                            "runAfter": {
+                                "Entities_-_Get_Hosts": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Foreach",
+                            "foreach": "@outputs('Entities_-_Get_Hosts')?['body']?['Hosts']",
+                            "actions": {
+                                "Apply_NSG_Deny_Rule": {
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['arm']['connectionId']"
+                                            }
+                                        },
+                                        "method": "put",
+                                        "body": {
+                                            "properties": {
+                                                "priority": 100,
+                                                "protocol": "*",
+                                                "access": "Deny",
+                                                "direction": "Inbound",
+                                                "sourceAddressPrefix": "*",
+                                                "sourcePortRange": "*",
+                                                "destinationAddressPrefix": "*",
+                                                "destinationPortRange": "*"
+                                            }
+                                        },
+                                        "path": "/subscriptions/@{items('For_each_Host')?['subscriptionId']}/resourceGroups/@{items('For_each_Host')?['resourceGroup']}/providers/Microsoft.Network/networkSecurityGroups/@{items('For_each_Host')?['nsgName']}/securityRules/ISOLATION_DENY_ALL"
+                                    }
+                                }
+                            }
+                        },
+                        "Add_comment_to_incident": {
+                            "runAfter": {
+                                "For_each_Host": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "body": {
+                                    "incidentArmId": "@triggerBody()?['object']?['id']",
+                                    "message": "Automated Playbook Isolate-AzureVM successfully executed. Isolation NSG rules applied."
+                                },
+                                "path": "/incidents/comment"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

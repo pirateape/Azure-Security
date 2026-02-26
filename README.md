@@ -61,6 +61,14 @@ This repository consolidates KQL threat hunting queries, PowerShell audit script
 - `MASTER_AUDIT_REPORT.json` - Machine-readable summary
 - Individual audit reports in respective folders
 
+### SOAR Playbooks (`src/Playbooks`)
+These ARM templates define Azure Logic Apps designed to be triggered by Microsoft Sentinel Incidents for automated response.
+
+1. **`Block-EntraUser.json`**:
+   Extracts compromised Account Entities from the Sentinel Incident, dynamically disables the account in Entra ID, revokes all active sign-in sessions, and posts a success comment back to the Incident.
+2. **`Isolate-AzureVM.json`**:
+   Extracts compromised Host Entities from the Sentinel Incident and applies a top-priority "Deny All" Network Security Group (NSG) rule to physically isolate the machine from the network while maintaining local forensic access if needed.
+
 ---
 
 ## 🔴 CRITICAL PRIORITY AUDITS (Run Weekly)
