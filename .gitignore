@@ -1,0 +1,30 @@
+# AI Agents
+.agent/
+.agents/
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Output files
+*.csv
+*.xls
+*.xlsx
+*.log
+
+# PowerShell
+*.ps1xml
+*.clixml
+*~
+# Ignore exported credential and token caches if accidentally created
+*token.cache*
+
+# Terraform (if used later)
+.terraform/
+*.tfstate
+*.tfstate.backup
