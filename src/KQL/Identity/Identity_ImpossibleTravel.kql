@@ -1,0 +1,73 @@
+// Identity - Impossible Travel (Custom)
+// Detects when the same user authenticates successfully from two geographically
+// distant locations within a time window that makes physical travel impossible.
+//
+// NOTE: Entra ID Identity Protection includes its own "Impossible Travel" detection
+// (risk event type: 'impossibleTravel'). This query provides a complementary, 
+// fully transparent version you can tune directly.
+//
+// ⚙️  Tuning parameters:
+//   maxTravelSpeedKmh  - assumed max realistic travel speed (commercial aircraft ~900 km/h)
+//   detectionWindow    - how far back to look
+//   minDistanceKm      - minimum gap to flag (avoids noise from adjacent geo-cells)
+
+let maxTravelSpeedKmh = 900.0;  // km/h — commercial aircraft ceiling
+let detectionWindow   = 1h;
+let minDistanceKm     = 500.0;  // ignore hops < this distance (same city / VPN)
+
+let recentSignins =
+    SigninLogs
+    | where TimeGenerated > ago(detectionWindow)
+    | where ResultType == 0                          // successful logins only
+    | where isnotempty(LocationDetails)
+    | extend Lat = todouble(LocationDetails.geoCoordinates.latitude)
+    | extend Lon = todouble(LocationDetails.geoCoordinates.longitude)
+    | where isnotnull(Lat) and isnotnull(Lon)
+    | project TimeGenerated, UserPrincipalName, IPAddress, Lat, Lon,
+              Country = tostring(LocationDetails.countryOrRegion),
+              City    = tostring(LocationDetails.city),
+              AppDisplayName, ConditionalAccessStatus, DeviceDetail;
+
+// Self-join: for each login, find any prior login from the same user in the window
+recentSignins
+| join kind=inner (
+    recentSignins
+    | project UserPrincipalName,
+              PrevTime   = TimeGenerated,
+              PrevIP     = IPAddress,
+              PrevLat    = Lat,
+              PrevLon    = Lon,
+              PrevCountry = Country,
+              PrevCity   = City
+) on UserPrincipalName
+// Only consider pairs where the second event is later than the first
+| where TimeGenerated > PrevTime
+// Calculate Haversine distance (approximate, in km)
+| extend DeltaLat   = radians(Lat - PrevLat)
+| extend DeltaLon   = radians(Lon - PrevLon)
+| extend A          = sin(DeltaLat / 2) * sin(DeltaLat / 2)
+                    + cos(radians(PrevLat)) * cos(radians(Lat))
+                    * sin(DeltaLon / 2) * sin(DeltaLon / 2)
+| extend DistanceKm = 6371.0 * 2 * atan2(sqrt(A), sqrt(1 - A))
+// Calculate how fast the user would need to travel
+| extend ElapsedHours  = datetime_diff('minute', TimeGenerated, PrevTime) / 60.0
+| extend RequiredSpeedKmh = iff(ElapsedHours > 0, DistanceKm / ElapsedHours, real(null))
+// Flag logins that require faster-than-possible travel
+| where DistanceKm        > minDistanceKm
+| where RequiredSpeedKmh  > maxTravelSpeedKmh
+| project
+    TimeGenerated,
+    UserPrincipalName,
+    NewLocation  = strcat(City, ", ", Country),
+    NewIP        = IPAddress,
+    NewLat       = Lat,
+    NewLon       = Lon,
+    PrevLocation = strcat(PrevCity, ", ", PrevCountry),
+    PrevIP,
+    PrevTime,
+    DistanceKm   = round(DistanceKm, 0),
+    ElapsedMinutes = datetime_diff('minute', TimeGenerated, PrevTime),
+    RequiredSpeedKmh = round(RequiredSpeedKmh, 0),
+    AppDisplayName,
+    ConditionalAccessStatus
+| order by RequiredSpeedKmh desc

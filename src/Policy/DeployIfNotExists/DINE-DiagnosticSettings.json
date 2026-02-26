@@ -1,0 +1,84 @@
+{
+  "mode": "Indexed",
+  "policyRule": {
+    "if": {
+      "field": "type",
+      "in": [
+        "Microsoft.KeyVault/vaults",
+        "Microsoft.Storage/storageAccounts",
+        "Microsoft.Network/networkSecurityGroups",
+        "Microsoft.Compute/virtualMachines"
+      ]
+    },
+    "then": {
+      "effect": "deployIfNotExists",
+      "details": {
+        "type": "Microsoft.Insights/diagnosticSettings",
+        "existenceCondition": {
+          "field": "Microsoft.Insights/diagnosticSettings/workspaceId",
+          "equals": "[parameters('logAnalyticsWorkspaceId')]"
+        },
+        "roleDefinitionIds": [
+          "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
+        ],
+        "deployment": {
+          "properties": {
+            "mode": "incremental",
+            "template": {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "resourceId": {
+                  "type": "string"
+                }
+              },
+              "resources": [
+                {
+                  "type": "Microsoft.Insights/diagnosticSettings",
+                  "apiVersion": "2021-05-01-preview",
+                  "name": "SecurityBaseline-Diagnostics",
+                  "scope": "[parameters('resourceId')]",
+                  "properties": {
+                    "workspaceId": "[parameters('workspaceId')]",
+                    "logs": [
+                      {
+                        "categoryGroup": "allLogs",
+                        "enabled": true
+                      }
+                    ],
+                    "metrics": [
+                      {
+                        "category": "AllMetrics",
+                        "enabled": true
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "parameters": {
+              "workspaceId": {
+                "value": "[parameters('logAnalyticsWorkspaceId')]"
+              },
+              "resourceId": {
+                "value": "[field('id')]"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "parameters": {
+    "logAnalyticsWorkspaceId": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Log Analytics Workspace ID",
+        "description": "Resource ID of the Log Analytics workspace"
+      }
+    }
+  }
+}

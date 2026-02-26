@@ -1,0 +1,140 @@
+// Endpoint_LOLBins_Comprehensive.kql
+// Description : Detects abuse of Living-off-the-Land Binaries (LOLBins) — legitimate
+//               Windows system binaries used by adversaries for code execution, defense
+//               evasion, persistence, and lateral movement (MITRE ATT&CK T1218, T1059,
+//               T1053, T1548).
+// Data source : Microsoft Defender for Endpoint — DeviceProcessEvents
+// Usage       : Scheduled hunting rule (PT1H window) or ad-hoc threat hunting
+// ─────────────────────────────────────────────────────────────────────────────
+let lookback = 24h;
+
+// ── Tuning lists ──────────────────────────────────────────────────────────────
+// Add known-good parent processes for each LOLBin if you see false positives.
+let knownGoodParents = dynamic([
+    "MsMpEng.exe",          // Defender AV
+    "MsSense.exe",          // Defender for Endpoint sensor
+    "svchost.exe",
+    "services.exe",
+    "smss.exe",
+    "wininit.exe"
+]);
+
+// ── LOLBin definitions ────────────────────────────────────────────────────────
+// Each sub-table targets specific abuse patterns; union at the end.
+
+// 1. mshta.exe — executes HTA files / remote VBScript/JScript payloads
+let mshta =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "mshta.exe"
+    | where ProcessCommandLine has_any ("http://", "https://", "ftp://",
+                                        "javascript:", "vbscript:", ".hta")
+    | extend LOLBin = "mshta", TTP = "T1218.005";
+
+// 2. regsvr32.exe — "Squiblydoo" — registers remote DLL / COM scriptlet
+let regsvr32 =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "regsvr32.exe"
+    | where ProcessCommandLine has_any ("/s", "/u", "-s", "-u")
+        and ProcessCommandLine has_any ("http://", "https://", "scrobj.dll", ".sct", ".dll")
+    | extend LOLBin = "regsvr32", TTP = "T1218.010";
+
+// 3. rundll32.exe — executes arbitrary DLL exports; common loader technique
+let rundll32 =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "rundll32.exe"
+    | where ProcessCommandLine has_any ("javascript:", "http://", "https://",
+                                        "shell32,ShellExec_RunDLL",
+                                        "advpack.dll,LaunchINFSection",
+                                        "ieadvpack.dll,LaunchINFSectionEx",
+                                        "setupapi.dll,InstallHinfSection",
+                                        "url.dll,FileProtocolHandler",
+                                        ".dll,#",          // ordinal export
+                                        "pcwrun.dll")
+    | extend LOLBin = "rundll32", TTP = "T1218.011";
+
+// 4. wscript.exe / cscript.exe — scripting engines for VBScript/JScript
+let wscript_cscript =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName in~ ("wscript.exe", "cscript.exe")
+    | where ProcessCommandLine has_any ("http://", "https://", ".vbs", ".js",
+                                        ".jse", ".vbe", ".wsf", ".wsh",
+                                        "//B", "//E:jscript", "//E:vbscript")
+    | extend LOLBin = FileName, TTP = "T1059.005";
+
+// 5. wmic.exe — WMI process execution / lateral movement / persistence
+let wmic =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "wmic.exe"
+    | where ProcessCommandLine has_any ("process call create", "/node:",
+                                        "shadowcopy delete",
+                                        "os get",
+                                        "computersystem get",
+                                        "qfe get")
+    | extend LOLBin = "wmic", TTP = "T1047";
+
+// 6. msiexec.exe — install remote MSI / execute embedded JavaScript
+let msiexec =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "msiexec.exe"
+    | where ProcessCommandLine has_any ("/q", "/quiet", "/qn")
+        and ProcessCommandLine has_any ("http://", "https://", "ftp://",
+                                        "\\\\", ".msi", "/i")
+    | extend LOLBin = "msiexec", TTP = "T1218.007";
+
+// 7. installutil.exe — AppLocker/WDAC bypass via /logfile craftable assembly
+let installutil =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "InstallUtil.exe"
+    | extend LOLBin = "installutil", TTP = "T1218.004";
+
+// 8. regasm.exe / regsvcs.exe — execute .NET assembly via COM registration
+let regasm_regsvcs =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName in~ ("regasm.exe", "regsvcs.exe")
+    | extend LOLBin = FileName, TTP = "T1218.009";
+
+// 9. odbcconf.exe — execute DLL via REGSVR action
+let odbcconf =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "odbcconf.exe"
+    | where ProcessCommandLine has_any ("/a", "REGSVR", ".dll", "http://", "https://")
+    | extend LOLBin = "odbcconf", TTP = "T1218.008";
+
+// 10. certutil.exe — download files / base64 decode (see also LOLBin_CertUtil.kql)
+let certutil =
+    DeviceProcessEvents
+    | where Timestamp >= ago(lookback)
+    | where FileName =~ "certutil.exe"
+    | where ProcessCommandLine has_any ("-urlcache", "-decode", "-encode",
+                                        "-decodehex", "http://", "https://")
+    | extend LOLBin = "certutil", TTP = "T1140";
+
+// ── Union and enrich ──────────────────────────────────────────────────────────
+union mshta, regsvr32, rundll32, wscript_cscript, wmic, msiexec,
+      installutil, regasm_regsvcs, odbcconf, certutil
+| where not (InitiatingProcessFileName in~ (knownGoodParents))
+| project
+    Timestamp,
+    DeviceName,
+    DeviceId,
+    LOLBin,
+    TTP,
+    FileName,
+    ProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    AccountName,
+    AccountDomain,
+    ProcessId,
+    FolderPath,
+    SHA256
+| sort by Timestamp desc

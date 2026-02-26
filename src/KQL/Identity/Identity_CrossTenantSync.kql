@@ -1,0 +1,11 @@
+// Identity - Cross-Tenant Synchronization Activity
+// Detects synchronization activities between tenants
+// Monitor for unauthorized tenant connections
+
+AuditLogs
+| where TimeGenerated > ago(24h)
+| where OperationName contains "CrossTenant"
+| extend SourceTenant = tostring(parse_json(TargetResources[0].modifiedProperties)[0].oldValue)
+| extend TargetTenant = tostring(parse_json(TargetResources[0].modifiedProperties)[0].newValue)
+| project TimeGenerated, OperationName, SourceTenant, TargetTenant, InitiatedBy = InitiatedBy.user.userPrincipalName, IPAddress = tostring(InitiatedBy.user.ipAddress)
+| order by TimeGenerated desc

@@ -1,0 +1,20 @@
+// Detects suspicious PowerShell execution containing known bypass or encoded commands.
+// Useful for Microsoft Sentinel or Microsoft Defender for Endpoint advanced hunting.
+
+DeviceProcessEvents
+| where InitiatingProcessFileName =~ "powershell.exe" or InitiatingProcessFileName =~ "pwsh.exe"
+| where ProcessCommandLine has_any (
+    "-enc", 
+    "-EncodedCommand", 
+    "-Bypass", 
+    "-Ep Bypass", 
+    "IEX", 
+    "Invoke-Expression", 
+    "hidden",
+    "-WindowStyle Hidden",
+    "DownloadString",
+    "Net.WebClient",
+    "BitsTransfer"
+)
+| project TimeGenerated, DeviceName, AccountName, InitiatingProcessFileName, ProcessCommandLine, InitiatingProcessParentFileName, ProcessId
+| sort by TimeGenerated desc

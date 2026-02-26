@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspaceName": {
+      "type": "string"
+    },
+    "workspaceResourceId": {
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
+      "name": "Suspicious Consent Grant to Application",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "Suspicious Consent Grant to Application",
+        "description": "Detects high-privilege OAuth consent grants that may indicate app consent phishing",
+        "severity": 1,
+        "enabled": true,
+        "evaluationFrequency": "PT5M",
+        "scopes": [
+          "[parameters('workspaceResourceId')]"
+        ],
+        "windowSize": "PT1H",
+        "criteria": {
+          "allOf": [
+            {
+              "query": "AuditLogs\n| where OperationName == \"Consent to application\"\n| extend ConsentScopes = tostring(parse_json(TargetResources[0].modifiedProperties)[0].newValue)\n| where ConsentScopes contains \"RoleManagement.ReadWrite.Directory\" or ConsentScopes contains \"User.Read.All\" or ConsentScopes contains \"Application.ReadWrite.All\" or ConsentScopes contains \"Directory.ReadWrite.All\"",
+              "timeAggregation": "Count",
+              "operator": "GreaterThan",
+              "threshold": 0,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "autoMitigate": false
+      }
+    }
+  ]
+}

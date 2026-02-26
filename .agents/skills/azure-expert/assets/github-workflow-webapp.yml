@@ -1,0 +1,167 @@
+# GitHub Actions Workflow for Azure Web App Deployment
+# Supports: .NET, Node.js, Python, Java
+# Features: Build, test, and deploy with staging slot swap
+
+name: Deploy to Azure Web App
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: 'your-app-name'    # Set this to your application's name
+  AZURE_RESOURCE_GROUP: 'your-rg-name'  # Set this to your resource group name
+  SLOT_NAME: 'staging'                   # Deployment slot name
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # .NET Build Example
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal
+
+      - name: Publish
+        run: dotnet publish -c Release -o ${{github.workspace}}/publish
+
+      # Node.js Build Example (uncomment if using Node.js)
+      # - name: Set up Node.js
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '20.x'
+      #     cache: 'npm'
+      #
+      # - name: Install dependencies
+      #   run: npm ci
+      #
+      # - name: Build
+      #   run: npm run build
+      #
+      # - name: Test
+      #   run: npm test
+
+      # Python Build Example (uncomment if using Python)
+      # - name: Set up Python
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.11'
+      #
+      # - name: Install dependencies
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install -r requirements.txt
+      #
+      # - name: Test
+      #   run: pytest
+
+      - name: Upload artifact for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-package
+          path: ${{github.workspace}}/publish
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: 'staging'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+          path: ./publish
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          # Alternative: Use OIDC (recommended)
+          # client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          # tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          # subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to staging slot
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: ${{ env.SLOT_NAME }}
+          package: ./publish
+
+      - name: Run smoke tests on staging
+        run: |
+          echo "Running smoke tests against staging..."
+          # Add your smoke test commands here
+          # Example: curl https://${{ env.AZURE_WEBAPP_NAME }}-staging.azurewebsites.net/health
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: 'production'
+      url: ${{ steps.slot-swap.outputs.webapp-url }}
+
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Swap staging to production
+        id: slot-swap
+        run: |
+          az webapp deployment slot swap \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --slot ${{ env.SLOT_NAME }} \
+            --target-slot production
+
+          echo "webapp-url=https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net" >> $GITHUB_OUTPUT
+
+      - name: Run smoke tests on production
+        run: |
+          echo "Running smoke tests against production..."
+          # Add your smoke test commands here
+          # Example: curl https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health
+
+# Setup Instructions:
+#
+# 1. Create Azure Service Principal:
+#    az ad sp create-for-rbac --name "github-actions" --role contributor \
+#      --scopes /subscriptions/{subscription-id}/resourceGroups/{resource-group} \
+#      --sdk-auth
+#
+# 2. Add the JSON output as a GitHub secret named AZURE_CREDENTIALS
+#
+# 3. Create a staging deployment slot:
+#    az webapp deployment slot create --name {app-name} \
+#      --resource-group {resource-group} --slot staging
+#
+# 4. Configure GitHub environments (optional but recommended):
+#    - staging: No required reviewers
+#    - production: Add required reviewers for approval
+#
+# 5. Update the environment variables at the top of this file

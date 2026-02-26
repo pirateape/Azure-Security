@@ -1,0 +1,103 @@
+// Identity_NewAdminAccount.kql
+// Description : Detects adversary persistence via creation of new high-privileged
+//               accounts or direct assignment of administrative roles to existing
+//               accounts (MITRE ATT&CK T1136.003, T1098.003).
+//               Covers both user account creation and privileged role assignment
+//               events from Entra ID audit logs.
+// Data source : AuditLogs (Entra ID / Azure AD)
+// Usage       : Scheduled hunting rule (PT1H window, PT15M frequency) or ad-hoc
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Roles classified as high-privilege. Extend as needed.
+let HighPrivilegeRoles = dynamic([
+    "Global Administrator",
+    "Privileged Role Administrator",
+    "Security Administrator",
+    "Application Administrator",
+    "Cloud Application Administrator",
+    "Authentication Administrator",
+    "Privileged Authentication Administrator",
+    "Exchange Administrator",
+    "SharePoint Administrator",
+    "User Administrator",
+    "Intune Administrator",
+    "Hybrid Identity Administrator",
+    "Directory Writers",
+    "Partner Tier2 Support"  // legacy but still dangerous
+]);
+
+// ── Surface 1: New user account created (guest or member) ─────────────────────
+let newAccounts =
+    AuditLogs
+    | where OperationName in ("Add user", "Invite external user")
+    | where Result =~ "success"
+    | extend
+        TargetUPN    = tostring(TargetResources[0].userPrincipalName),
+        TargetObjectId = tostring(TargetResources[0].id),
+        AccountType  = tostring(TargetResources[0].type),
+        ActorUPN     = tostring(InitiatedBy.user.userPrincipalName),
+        ActorIP      = tostring(InitiatedBy.user.ipAddress),
+        ActorApp     = tostring(InitiatedBy.app.displayName)
+    | extend EventCategory = "NewAccountCreated"
+    | project TimeGenerated, EventCategory, TargetUPN, TargetObjectId,
+              AccountType, RoleAssigned = "—",
+              ActorUPN, ActorIP, ActorApp, CorrelationId;
+
+// ── Surface 2: Administrative role directly assigned to any account ───────────
+let roleAssignments =
+    AuditLogs
+    | where OperationName in (
+        "Add member to role",
+        "Add member to role in PIM requested (permanent)",
+        "Add eligible member to role",
+        "Add member to role completed (PIM activation)"
+      )
+    | where Result =~ "success"
+    | mv-expand TargetResources
+    | extend RoleAssigned = tostring(parse_json(tostring(TargetResources.modifiedProperties))
+                                        [0].newValue)
+    // Trim surrounding quotes that Entra sometimes includes
+    | extend RoleAssigned = trim_chars('"', RoleAssigned)
+    | where RoleAssigned in~ (HighPrivilegeRoles)
+    | extend
+        TargetUPN      = tostring(TargetResources.userPrincipalName),
+        TargetObjectId = tostring(TargetResources.id),
+        AccountType    = tostring(TargetResources.type),
+        ActorUPN       = tostring(InitiatedBy.user.userPrincipalName),
+        ActorIP        = tostring(InitiatedBy.user.ipAddress),
+        ActorApp       = tostring(InitiatedBy.app.displayName)
+    | extend EventCategory = "HighPrivRoleAssigned"
+    | project TimeGenerated, EventCategory, TargetUPN, TargetObjectId,
+              AccountType, RoleAssigned,
+              ActorUPN, ActorIP, ActorApp, CorrelationId;
+
+// ── Surface 3: Service principal (app) granted admin role ─────────────────────
+let spnRoleAssignments =
+    AuditLogs
+    | where OperationName in (
+        "Add member to role",
+        "Add member to role in PIM requested (permanent)",
+        "Add eligible member to role"
+      )
+    | where Result =~ "success"
+    | mv-expand TargetResources
+    | where tostring(TargetResources.type) =~ "ServicePrincipal"
+    | extend RoleAssigned = tostring(parse_json(tostring(TargetResources.modifiedProperties))
+                                        [0].newValue)
+    | extend RoleAssigned = trim_chars('"', RoleAssigned)
+    | where RoleAssigned in~ (HighPrivilegeRoles)
+    | extend
+        TargetUPN      = tostring(TargetResources.displayName),
+        TargetObjectId = tostring(TargetResources.id),
+        AccountType    = "ServicePrincipal",
+        ActorUPN       = tostring(InitiatedBy.user.userPrincipalName),
+        ActorIP        = tostring(InitiatedBy.user.ipAddress),
+        ActorApp       = tostring(InitiatedBy.app.displayName)
+    | extend EventCategory = "ServicePrincipal-HighPrivRoleAssigned"
+    | project TimeGenerated, EventCategory, TargetUPN, TargetObjectId,
+              AccountType, RoleAssigned,
+              ActorUPN, ActorIP, ActorApp, CorrelationId;
+
+// ── Union all surfaces ─────────────────────────────────────────────────────────
+union newAccounts, roleAssignments, spnRoleAssignments
+| sort by TimeGenerated desc

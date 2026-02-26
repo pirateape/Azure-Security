@@ -1,0 +1,8 @@
+// Identify Failed Analytic Rules
+// Rules can fail due to permissions or query errors.
+
+SentinelHealth
+| where TimeGenerated > ago(3d)
+| where OperationName == "Data fetch for analytics rule"
+| where Status == "Failure"
+| project TimeGenerated, SentinelResourceName, Description, ExtendedProperties

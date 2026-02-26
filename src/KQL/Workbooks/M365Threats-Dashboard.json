@@ -1,0 +1,202 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+        {
+            "type": 1,
+            "content": {
+                "json": "## Microsoft 365 Insider Threat & Collaboration Dashboard\n\nThis dashboard leverages the OfficeActivity table to monitor risk within Teams, SharePoint, and Exchange. It highlights suspicious Exchange forwarding rules, mass file downloads in SharePoint and Teams, creation of anonymous sharing links, and mass email deletions which may indicate account compromise or data exfiltration.\n\n**Note:** Queries requiring a tenant domain filter default to `contoso.com`. Please update the `TenantDomain` variable in the specific queries (e.g., Forwarding Rules, External Downloads) to match your environment."
+            },
+            "name": "text - overview"
+        },
+        {
+            "type": 9,
+            "content": {
+                "version": "KqlParameterItem/1.0",
+                "parameters": [
+                    {
+                        "id": "timeRange",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "TimeRange",
+                        "type": 4,
+                        "description": "Select the timeframe for analysis.",
+                        "isRequired": true,
+                        "value": {
+                            "durationMs": 86400000
+                        },
+                        "typeSettings": {
+                            "selectableValues": [
+                                {
+                                    "durationMs": 3600000
+                                },
+                                {
+                                    "durationMs": 14400000
+                                },
+                                {
+                                    "durationMs": 43200000
+                                },
+                                {
+                                    "durationMs": 86400000
+                                },
+                                {
+                                    "durationMs": 172800000
+                                },
+                                {
+                                    "durationMs": 259200000
+                                },
+                                {
+                                    "durationMs": 604800000
+                                },
+                                {
+                                    "durationMs": 1209600000
+                                },
+                                {
+                                    "durationMs": 2419200000
+                                },
+                                {
+                                    "durationMs": 2592000000
+                                },
+                                {
+                                    "durationMs": 5184000000
+                                },
+                                {
+                                    "durationMs": 7776000000
+                                }
+                            ]
+                        },
+                        "timeContext": {
+                            "durationMs": 86400000
+                        }
+                    },
+                    {
+                        "id": "tenantDomain",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "TenantDomain",
+                        "type": 1,
+                        "description": "Your organization's primary UPN domain (e.g., contoso.com)",
+                        "isRequired": true,
+                        "value": "contoso.com"
+                    }
+                ],
+                "style": "pills",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "parameters - time and domain"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "let TenantDomain = \"{TenantDomain}\";\nOfficeActivity\n| where TimeGenerated {TimeRange}\n| where OfficeWorkload == \"Exchange\"\n| where Operation in (\"New-InboxRule\", \"Set-InboxRule\")\n| extend ForwardTo = tostring(parse_json(Parameters).ForwardTo)\n| extend ForwardAsAttachment = tostring(parse_json(Parameters).ForwardAsAttachmentTo)\n| extend RedirectTo = tostring(parse_json(Parameters).RedirectTo)\n| where isnotempty(ForwardTo) or isnotempty(ForwardAsAttachment) or isnotempty(RedirectTo)\n| extend ExternalForward = case(\n    ForwardTo contains \"@\" and ForwardTo !contains strcat(\"@\", TenantDomain), ForwardTo,\n    ForwardAsAttachment contains \"@\" and ForwardAsAttachment !contains strcat(\"@\", TenantDomain), ForwardAsAttachment,\n    RedirectTo contains \"@\" and RedirectTo !contains strcat(\"@\", TenantDomain), RedirectTo,\n    \"\"\n)\n| where isnotempty(ExternalForward)\n| project TimeGenerated, Operation, UserId, ClientIP, ExternalForward, RuleName = tostring(parse_json(Parameters).Name)\n| summarize ForwardRules = count(), ExternalDestinations = make_set(ExternalForward), IPs = make_set(ClientIP) by UserId, bin(TimeGenerated, 5m)\n| where ForwardRules >= 1\n| order by TimeGenerated desc",
+                "size": 3,
+                "title": "Suspicious Inbox Forwarding Rules Created",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "ForwardRules",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "redDark"
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - exchange forwarding"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "OfficeActivity\n| where TimeGenerated {TimeRange}\n| where OfficeWorkload == \"Exchange\"\n| where Operation in (\"SoftDelete\", \"HardDelete\", \"MoveToDeletedItems\")\n| summarize\n    DeletedItems   = count(),\n    DeletedFolders = make_set(tostring(parse_json(Item).ParentFolder.Path)),\n    IPs            = make_set(ClientIP)\n  by UserId, bin(TimeGenerated, 10m)\n| where DeletedItems > 50\n| order by DeletedItems desc",
+                "size": 3,
+                "title": "Mass Email Deletions (>50 items)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "DeletedItems",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "orange"
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - exchange mass deletion"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "let TenantDomain = \"{TenantDomain}\";\nOfficeActivity\n| where TimeGenerated {TimeRange}\n| where OfficeWorkload == \"SharePoint\"\n| where Operation == \"FileDownloaded\"\n| where UserId contains \"#EXT#\" or UserId !contains strcat(\"@\", TenantDomain)\n| project TimeGenerated, UserId, SiteUrl = Site_Url, FileName = SourceFileName, ClientIP\n| summarize DownloadCount = count(), Files = make_set(FileName), Sites = make_set(SiteUrl), IPs = make_set(ClientIP) by UserId, bin(TimeGenerated, 10m)\n| where DownloadCount > 50\n| order by DownloadCount desc",
+                "size": 3,
+                "title": "SharePoint Mass Bulk Download by External Users",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "DownloadCount",
+                            "formatter": 4,
+                            "formatOptions": {
+                                "palette": "blue"
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - sharepoint download"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "let TenantDomain = \"{TenantDomain}\";\nOfficeActivity\n| where TimeGenerated {TimeRange}\n| where OfficeWorkload == \"MicrosoftTeams\"\n| where Operation == \"FileDownloaded\"\n| where UserId contains \"#EXT#\" or UserId !contains strcat(\"@\", TenantDomain)\n| project TimeGenerated, UserId, TeamName = tostring(parse_json(SourceRelativeUrl)[0]), FileName = SourceFileName, ClientIP\n| summarize DownloadCount = count(), Files = make_set(FileName), Teams = make_set(TeamName), IPs = make_set(ClientIP) by UserId, bin(TimeGenerated, 10m)\n| where DownloadCount > 20\n| order by DownloadCount desc",
+                "size": 3,
+                "title": "Teams Mass File Download by External Users",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table"
+            },
+            "name": "query - teams download"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "OfficeActivity\n| where TimeGenerated {TimeRange}\n| where OfficeWorkload == \"MicrosoftTeams\"\n| where Operation == \"MemberAdded\"\n| extend MemberType = tostring(parse_json(Members)[0].MemberType)\n| extend UPN = tostring(parse_json(Members)[0].UPN)\n| where MemberType == \"Guest\" or UPN contains \"#EXT#\"\n| project TimeGenerated, Operation, UserWhoAdded = UserId, TeamName = tostring(parse_json(Parameters).TeamName), GuestUser = UPN, AddedByIP = ClientIP\n| summarize GuestAdditions = count(), Teams = make_set(TeamName), AddedByIPs = make_set(AddedByIP) by UserWhoAdded, bin(TimeGenerated, 1h)\n| order by GuestAdditions desc",
+                "size": 3,
+                "title": "Teams External User Additions",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table"
+            },
+            "name": "query - teams users added"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "OfficeActivity\n| where TimeGenerated {TimeRange}\n| where OfficeWorkload in (\"SharePoint\", \"OneDrive\")\n| where Operation == \"SharingSet\"\n| extend LinkType = tostring(parse_json(Parameters).LinkType)\n| where LinkType == \"AnonymousAccess\"\n| project TimeGenerated, Operation, UserId, ClientIP, SiteUrl = Site_Url, FileName = SourceFileName, LinkType\n| summarize AnonymousLinks = count(), Sites = make_set(SiteUrl), Files = make_set(FileName) by UserId, bin(TimeGenerated, 1h)\n| order by AnonymousLinks desc",
+                "size": 3,
+                "title": "SharePoint/OneDrive Anonymous Link Creations",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table"
+            },
+            "name": "query - anonymous links"
+        }
+    ],
+    "fallbackResourceIds": [
+        "Azure Monitor"
+    ],
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

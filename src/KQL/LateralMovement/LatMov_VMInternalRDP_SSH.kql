@@ -1,0 +1,20 @@
+// Lateral Movement - VM-to-VM RDP/SSH Connections
+// Detects RDP or SSH connections between VMs within the same VNet
+// May indicate lateral movement after initial compromise
+
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where ResourceType == "NETWORKSECURITYGROUPS"
+| where OperationName == "NetworkSecurityGroupFlowEvent"
+| where direction_s == "I"
+| where destPort_d in (3389, 22)
+| extend SrcIP = strcat(srcIP_s, ":", srcPort_d)
+| extend DstIP = strcat(destIP_s, ":", destPort_d)
+// Filter for internal traffic (RFC 1918)
+| where srcIP_s matches regex @"^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"
+| where destIP_s matches regex @"^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"
+| where srcIP_s != destIP_s
+| project TimeGenerated, NSG = Resource, SrcIP, DstIP, Protocol = protocol_s, Action = flowStatus_s
+| summarize ConnectionCount = count(), Sources = make_set(SrcIP), Destinations = make_set(DstIP) by NSG, bin(TimeGenerated, 5m)
+| where ConnectionCount > 10
+| order by ConnectionCount desc

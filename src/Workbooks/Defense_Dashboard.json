@@ -1,0 +1,45 @@
+{
+  "displayName": "Azure Defense-in-Depth Dashboard",
+  "style": "Sentinel",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## 🛡️ Azure Defense-in-Depth Dashboard\nMonitor Identity, Edge, and Data security posture."
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "SigninLogs\n| where ResultType == '50126'\n| summarize FailedLogins = count() by UserPrincipalName, IPAddress, bin(TimeGenerated, 1h)\n| render timechart",
+        "size": 0,
+        "title": "Smart Lockout Trends (Wrong Passwords)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AzureDiagnostics\n| where Category == 'AzureFirewallApplicationRule'\n| where msg_s has 'Deny'\n| summarize BlockedConnections = count() by Target = extract('to ([0-9.]+:[0-9]+)', 1, msg_s)\n| top 10 by BlockedConnections",
+        "size": 0,
+        "title": "Top Blocked Firewall Destinations",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "SecurityScore\n| summarize CurrentScore = max(CurrentScore) by bin(TimeGenerated, 1d)\n| render timechart",
+        "size": 0,
+        "title": "Secure Score History",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+// Check for Silent Data Connectors
+// Identify connectors that haven't sent data in the last 24 hours.
+
+SentinelHealth
+| where TimeGenerated > ago(24h)
+| where Status != "Success"
+| summarize count() by SentinelResourceName, Description, Status

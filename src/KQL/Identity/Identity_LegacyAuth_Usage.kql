@@ -1,0 +1,10 @@
+// Legacy Authentication Usage (Gap Analysis)
+// Identifies users currently utilizing Legacy Authentication protocols (POP, IMAP, SMTP, older Office).
+// These protocols bypass MFA and Smart Lockout effectiveness.
+
+SigninLogs
+| where TimeGenerated > ago(7d)
+| where ClientAppUsed !in ("Mobile Apps and Desktop clients", "Browser")
+| where ClientAppUsed !startswith "Exchange ActiveSync" // Sometimes considered modern, depends on config
+| summarize Count = count(), Locations = make_set(Location), IPs = make_set(IPAddress) by UserPrincipalName, ClientAppUsed
+| order by Count desc

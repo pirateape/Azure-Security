@@ -1,0 +1,122 @@
+{
+  "mode": "Indexed",
+  "policyRule": {
+    "if": {
+      "field": "type",
+      "equals": "Microsoft.Network/networkSecurityGroups"
+    },
+    "then": {
+      "effect": "deployIfNotExists",
+      "details": {
+        "type": "Microsoft.Network/networkWatchers/flowLogs",
+        "name": "[concat(parameters('networkWatcherName'), '/FlowLog-', field('name'))]",
+        "resourceGroupName": "[parameters('networkWatcherRG')]",
+        "existenceCondition": {
+          "field": "Microsoft.Network/networkWatchers/flowLogs/enabled",
+          "equals": true
+        },
+        "roleDefinitionIds": [
+          "/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"
+        ],
+        "deployment": {
+          "properties": {
+            "mode": "incremental",
+            "template": {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "flowLogName": {
+                  "type": "string"
+                },
+                "networkWatcherName": {
+                  "type": "string"
+                },
+                "nsgId": {
+                  "type": "string"
+                },
+                "workspaceId": {
+                  "type": "string"
+                },
+                "storageAccountId": {
+                  "type": "string"
+                }
+              },
+              "resources": [
+                {
+                  "type": "Microsoft.Network/networkWatchers/flowLogs",
+                  "apiVersion": "2022-07-01",
+                  "name": "[concat(parameters('networkWatcherName'), '/', parameters('flowLogName'))]",
+                  "location": "[resourceGroup().location]",
+                  "properties": {
+                    "targetResourceId": "[parameters('nsgId')]",
+                    "storageId": "[parameters('storageAccountId')]",
+                    "enabled": true,
+                    "format": {
+                      "type": "JSON",
+                      "version": 2
+                    },
+                    "flowAnalyticsConfiguration": {
+                      "networkWatcherFlowAnalyticsConfiguration": {
+                        "enabled": true,
+                        "workspaceResourceId": "[parameters('workspaceId')]",
+                        "trafficAnalyticsInterval": 60
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "parameters": {
+              "flowLogName": {
+                "value": "[concat('FlowLog-', field('name'))]"
+              },
+              "networkWatcherName": {
+                "value": "[parameters('networkWatcherName')]"
+              },
+              "nsgId": {
+                "value": "[field('id')]"
+              },
+              "workspaceId": {
+                "value": "[parameters('logAnalyticsWorkspaceId')]"
+              },
+              "storageAccountId": {
+                "value": "[parameters('storageAccountId')]"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "parameters": {
+    "logAnalyticsWorkspaceId": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Log Analytics Workspace ID",
+        "description": "Resource ID of the Log Analytics workspace"
+      }
+    },
+    "storageAccountId": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Storage Account ID",
+        "description": "Resource ID of the storage account for flow logs"
+      }
+    },
+    "networkWatcherRG": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Network Watcher Resource Group",
+        "description": "Resource group containing Network Watcher"
+      },
+      "defaultValue": "NetworkWatcherRG"
+    },
+    "networkWatcherName": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Network Watcher Name",
+        "description": "Name of the Network Watcher resource (Azure auto-creates NetworkWatcher_<region>)"
+      }
+    }
+  }
+}

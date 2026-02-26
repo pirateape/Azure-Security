@@ -1,0 +1,17 @@
+// Detects excessive failed logons within a targeted timeframe from single or multiple IP addresses.
+// Specifically highlights brute-force or password spraying attempts against Entra ID.
+
+let TimeFrame = 1h;
+let FailedThreshold = 10; // Number of failed attemps to trigger the query
+
+SigninLogs
+| where TimeGenerated > ago(TimeFrame)
+| where ResultType != 0 // Failed logons
+| summarize FailedCount = count(), 
+            FailedReasons = make_set(ResultDescription), 
+            TargetUsers = make_set(UserPrincipalName),
+            TargetUserCount = dcount(UserPrincipalName) 
+            by IPAddress, Location
+| where FailedCount >= FailedThreshold
+| project IPAddress, Location, TargetUserCount, FailedCount, FailedReasons, TargetUsers
+| order by FailedCount desc

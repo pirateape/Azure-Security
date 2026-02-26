@@ -1,0 +1,64 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+        {
+            "type": 1,
+            "content": {
+                "json": "# Advanced Threat Hunting Dashboard\n\nThis workbook consolidates signals from Azure Identity Protection, Azure Activity, and Microsoft Defender for Endpoint to provide a unified view of potential suspicious activities."
+            },
+            "name": "text - Welcome"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "SigninLogs\r\n| where TimeGenerated > ago(7d)\r\n| where ResultType != 0\r\n| summarize FailedCount = count(), TargetUsers = make_set(UserPrincipalName)\r\n            by IPAddress, Location\r\n| where FailedCount >= 10\r\n| order by FailedCount desc",
+                "size": 0,
+                "title": "Brute Force / Password Spray (Top Target IPs)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "query - Failed Logons"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "SigninLogs\r\n| where TimeGenerated >= ago(1d)\r\n| where ResultType == 0\r\n| summarize DistinctDevices = dcount(tostring(DeviceDetail.deviceId)) by UserPrincipalName\r\n| where DistinctDevices > 1\r\n| order by DistinctDevices desc",
+                "size": 0,
+                "title": "Potential Lateral Movement (Multi-Device Logons)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "query - Lateral Movement"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "DeviceProcessEvents\r\n| where InitiatingProcessFileName =~ \"powershell.exe\" or InitiatingProcessFileName =~ \"pwsh.exe\"\r\n| where ProcessCommandLine has_any (\"-enc\", \"-EncodedCommand\", \"-Bypass\", \"IEX\", \"hidden\")\r\n| project TimeGenerated, DeviceName, AccountName, ProcessCommandLine\r\n| order by TimeGenerated desc",
+                "size": 0,
+                "title": "Suspicious PowerShell Activity",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "query - Suspicious PowerShell"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AzureActivity\r\n| where TimeGenerated > ago(7d)\r\n| where OperationNameValue =~ \"Microsoft.Authorization/roleAssignments/write\"\r\n| where ActivityStatusValue =~ \"Success\"\r\n| extend Props = parse_json(tostring(Properties))\r\n| extend ReqBody = parse_json(tostring(Props.requestbody))\r\n| extend TargetPrincipalId = tostring(ReqBody.properties.principalId)\r\n| extend RoleDefinitionId = tostring(ReqBody.properties.roleDefinitionId)\r\n| extend RoleId = extract(@\"roleDefinitions/([a-z0-9\\\\-]+)\", 1, RoleDefinitionId)\r\n| project TimeGenerated, Caller, TargetPrincipalId, RoleId, Scope=ResourceId\r\n| order by TimeGenerated desc",
+                "size": 0,
+                "title": "Recent RBAC Assignments",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "query - Suspicious RBAC"
+        }
+    ],
+    "isLocked": false,
+    "fallbackResourceIds": [
+        "Azure Monitor"
+    ]
+}

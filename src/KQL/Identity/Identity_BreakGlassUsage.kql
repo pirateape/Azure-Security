@@ -1,0 +1,9 @@
+// Break-Glass Account Usage (Critical Alert)
+// ACTION: Replace ("breakglass1@yourdomain.com", "breakglass2@yourdomain.com") with your actual BG accounts.
+
+let bgAccounts = dynamic(["breakglass1@yourdomain.com", "breakglass2@yourdomain.com"]);
+SigninLogs
+| where TimeGenerated > ago(24h)
+| where UserPrincipalName in (bgAccounts)
+| project TimeGenerated, UserPrincipalName, IPAddress, ResultType, ResultDescription
+| extend Severity = "Critical"

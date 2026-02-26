@@ -1,0 +1,15 @@
+// Exchange Online - Mass Email Deletion by User
+// Detects when a user deletes a large number of emails in a short time
+// May indicate account compromise or data destruction
+
+OfficeActivity
+| where TimeGenerated > ago(1h)
+| where OfficeWorkload == "Exchange"
+| where Operation in ("SoftDelete", "HardDelete", "MoveToDeletedItems")
+| summarize
+    DeletedItems   = count(),
+    DeletedFolders = make_set(tostring(Item.ParentFolder.Path)),
+    IPs            = make_set(ClientIP)
+  by UserId, bin(TimeGenerated, 10m)
+| where DeletedItems > 50
+| order by DeletedItems desc

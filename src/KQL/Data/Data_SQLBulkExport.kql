@@ -1,0 +1,16 @@
+// Data Protection - SQL Database Bulk Export
+// Detects when large amounts of data are exported from SQL databases
+// May indicate data exfiltration via backup/restore
+
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where ResourceProvider == "MICROSOFT.SQL"
+| where Category == "SQLSecurityAuditEvents"
+| where Action contains "BULK INSERT" or Action contains "SELECT INTO" or Action contains "BACKUP DATABASE"
+| extend Database = tostring(parse_json(Properties).database_name)
+| extend ClientIP = tostring(parse_json(Properties).client_ip)
+| extend Application = tostring(parse_json(Properties).application_name)
+| project TimeGenerated, Database, Action, Statement = tostring(parse_json(Properties).statement), ClientIP, Application, Principal = tostring(parse_json(Properties).server_principal_name)
+| summarize QueryCount = count(), Statements = make_set(Statement), IPs = make_set(ClientIP) by Database, Principal, bin(TimeGenerated, 10m)
+| where QueryCount > 5
+| order by QueryCount desc

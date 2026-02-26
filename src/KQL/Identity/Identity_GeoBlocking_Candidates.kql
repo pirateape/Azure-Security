@@ -1,0 +1,15 @@
+// Geo-Blocking Candidates (Gap Analysis)
+// Identifies users who log in from many different countries (High Risk) vs
+// Users who have ONLY logged in from 1 country in 30 days (Safe to Geo-Block).
+
+let timeframe = 30d;
+SigninLogs
+| where TimeGenerated > ago(timeframe)
+| where ResultType == 0 // Successful logins only
+| summarize CountryCount = dcount(Location), Locations = make_set(Location) by UserPrincipalName
+| extend Recommendation = case(
+    CountryCount == 1, "Safe to strict Geo-Block (1 Country)",
+    CountryCount > 5, "High Risk - Review Travel Pattern",
+    "Standard Profile"
+)
+| order by CountryCount desc

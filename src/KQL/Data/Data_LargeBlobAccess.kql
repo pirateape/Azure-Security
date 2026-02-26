@@ -1,0 +1,21 @@
+// Data Protection - Large Blob Container Access
+// Detects when large amounts of data are accessed from storage accounts
+// May indicate data exfiltration.
+//
+// FIX: Previous version used parse_json(Properties)["Content-Length"] which is invalid KQL
+// (hyphens in property names break dot-access).  StorageBlobLogs has a native
+// ResponseBodySize column that is already numeric and doesn't need JSON parsing.
+
+StorageBlobLogs
+| where TimeGenerated > ago(1h)
+| where OperationName == "GetBlob"
+| where StatusText == "Success"
+| extend BlobSizeMB = ResponseBodySize / (1024.0 * 1024.0)
+| summarize
+    TotalSizeMB = sum(BlobSizeMB),
+    BlobCount   = count(),
+    Blobs       = make_set(Uri),
+    IPs         = make_set(CallerIpAddress)
+  by AccountName, CallerObjectId, bin(TimeGenerated, 10m)
+| where TotalSizeMB > 500 or BlobCount > 100
+| order by TotalSizeMB desc

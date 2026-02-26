@@ -1,0 +1,36 @@
+graph TD
+    subgraph "Identity (Entra ID)"
+        User[User / Attacker] -->|Sign-In| Entra[Entra ID Protection]
+        Entra -->|Logs| SigninLogs[SigninLogs]
+        Entra -->|Risk Events| RiskEvents[AADRiskEvents]
+    end
+
+    subgraph "Edge Security"
+        Traffic[Network Traffic] -->|Inbound| FW[Azure Firewall / WAF]
+        FW -->|Allow/Block| VNET[Virtual Network]
+        FW -->|Logs| Diag[AzureDiagnostics]
+    end
+
+    subgraph "Infrastructure"
+        VNET -->|Flows| NSG[NSG Flow Logs]
+        VM[Virtual Machines] -->|Events| SecurityEvent[SecurityEvent]
+    end
+
+    subgraph "Microsoft Sentinel"
+        SigninLogs & RiskEvents & Diag & NSG & SecurityEvent -->|Ingest| Tables[Log Analytics Workspace]
+        
+        Tables -->|Query| Hunting[KQL Hunting Queries]
+        Hunting -->|Trigger| Alert[Incidents]
+        
+        Alert -->|Orchestrate| LogicApp[SOAR Playbooks]
+    end
+
+    subgraph "Defense-in-Depth Scripts"
+        Scripts[PowerShell Audits] -->|Read-Only| Entra
+        Scripts -->|Read-Only| FW
+        Scripts -->|Read-Only| NSG
+    end
+
+    style Entra fill:#0072C6,stroke:#fff,color:#fff
+    style FW fill:#5C2D91,stroke:#fff,color:#fff
+    style Sentinel fill:#e05d44,stroke:#fff,color:#fff

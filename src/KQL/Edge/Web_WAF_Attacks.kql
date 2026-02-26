@@ -1,0 +1,15 @@
+// WAF Attack Detection (Front Door / App Gateway)
+// Detects SQL Injection (SQLi) and Cross-Site Scripting (XSS) patterns blocked by WAF.
+
+AzureDiagnostics
+| where ResourceType in ("APPLICATIONGATEWAYS", "FRONTDOORS")
+| where Category in ("ApplicationGatewayFirewallLog", "FrontdoorWebApplicationFirewallLog")
+| where action_s == "Block" or action_s == "Prevent"
+| extend AttackType = case(
+    details_message_s has "SQL Injection", "SQLi",
+    details_message_s has "XSS", "XSS",
+    details_message_s has "Remote File Inclusion", "RFI",
+    "Other Malicious Traffic"
+)
+| summarize AttackCount = count(), TargetHost = make_set(hostname_s) by clientIp_s, AttackType
+| order by AttackCount desc

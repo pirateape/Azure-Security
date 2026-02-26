@@ -1,0 +1,24 @@
+// Identity - Stale Account Login (Inactive >90 Days)
+// Detects when accounts that haven't logged in for 90+ days suddenly authenticate.
+// May indicate compromised dormant accounts.
+//
+// FIX: Previous version had a logic bug - the inner join looked within ago(90d)..ago(1d)
+// and then filtered LastLogin < ago(90d), which was impossible to satisfy.
+// Corrected approach: build staleAccounts from a 180-day lookback, then detect fresh logins.
+
+let lookbackWindow  = 180d; // How far back to find a user's most-recent historical login
+let staleThreshold  = 90d;  // Account is "stale" if last login was more than this long ago
+let detectionWindow = 1h;   // Alert window for new logins
+
+let staleAccounts =
+    SigninLogs
+    | where TimeGenerated between (ago(lookbackWindow) .. ago(staleThreshold))
+    | where ResultType == 0   // Successful logins only
+    | summarize LastLogin = max(TimeGenerated) by UserPrincipalName;
+
+SigninLogs
+| where TimeGenerated > ago(detectionWindow)
+| where ResultType == 0
+| join kind=inner staleAccounts on UserPrincipalName
+| project TimeGenerated, UserPrincipalName, LastPreviousLogin = LastLogin, IPAddress, Location, AppDisplayName, ConditionalAccessStatus
+| order by TimeGenerated desc

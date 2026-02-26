@@ -1,0 +1,17 @@
+// Teams - Mass File Download by External User
+// Detects when external/guest users download large numbers of files from Teams
+// May indicate data exfiltration
+//
+// ⚙️  ACTION REQUIRED: Set your tenant's primary domain below.
+
+let TenantDomain = "contoso.com";  // EDIT: Replace with your organisation's primary UPN domain
+
+OfficeActivity
+| where TimeGenerated > ago(1h)
+| where OfficeWorkload == "MicrosoftTeams"
+| where Operation == "FileDownloaded"
+| where UserId contains "#EXT#" or UserId !contains strcat("@", TenantDomain)
+| project TimeGenerated, UserId, TeamName = tostring(parse_json(SourceRelativeUrl)[0]), FileName = SourceFileName, ClientIP
+| summarize DownloadCount = count(), Files = make_set(FileName), Teams = make_set(TeamName), IPs = make_set(ClientIP) by UserId, bin(TimeGenerated, 10m)
+| where DownloadCount > 20
+| order by DownloadCount desc

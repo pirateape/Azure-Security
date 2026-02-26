@@ -1,0 +1,13 @@
+// Identity - New Application Registration by Non-Admin
+// Detects when non-admin users register new applications
+// May indicate unauthorized app creation for persistence
+
+AuditLogs
+| where TimeGenerated > ago(24h)
+| where OperationName == "Add application"
+| extend AppName = tostring(TargetResources[0].displayName)
+| extend CreatedBy = tostring(InitiatedBy.user.userPrincipalName)
+// Exclude known service accounts and admins
+| where CreatedBy !contains "admin" and CreatedBy !contains "svc" and CreatedBy !contains "automation"
+| project TimeGenerated, AppName, CreatedBy, IPAddress = tostring(InitiatedBy.user.ipAddress), Location = Location
+| order by TimeGenerated desc

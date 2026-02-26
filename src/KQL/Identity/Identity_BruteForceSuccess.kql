@@ -1,0 +1,16 @@
+// Successful Login from Malicious IP (After Failure)
+// Detects a successful login from an IP that previously failed many times (Brute Force Success).
+
+let timeframe = 24h;
+let bruteForceIPs = 
+    SigninLogs
+    | where TimeGenerated > ago(timeframe)
+    | where ResultType != 0
+    | summarize FailureCount = count() by IPAddress
+    | where FailureCount > 20
+    | project IPAddress;
+SigninLogs
+| where TimeGenerated > ago(timeframe)
+| where ResultType == 0 // Success
+| where IPAddress in (bruteForceIPs)
+| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName

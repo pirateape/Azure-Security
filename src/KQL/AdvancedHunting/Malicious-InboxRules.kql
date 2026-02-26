@@ -1,0 +1,22 @@
+// Detects potentially malicious inbox rules created in Exchange Online
+// Such rules are often used to hide emails containing words like "phish", "invoice", "hack", or "password"
+// or auto-forwarding emails to a compromised/external address or RSS Subscriptions folder
+
+let SuspiciousKeywords = dynamic(["password", "invoice", "phish", "hack", "urgent", "bitcoin"]);
+let SuspiciousFolders = dynamic(["RSS Subscriptions", "Junk Email", "Deleted Items", "Archive"]);
+
+OfficeActivity
+| where RecordType == "ExchangeAdmin" or RecordType == "ExchangeItem"
+| where Operation == "New-InboxRule" or Operation == "Set-InboxRule"
+| extend RuleParameters = tostring(Parameters)
+// Checking if the rule moves emails to suspicious folders
+| extend MovesToFolder = extract("MoveToFolder : ([^\\]]+)", 1, RuleParameters)
+| extend HasSuspiciousFolder = iff(MovesToFolder in~ (SuspiciousFolders), true, false)
+// Checking if the rule filters on suspicious keywords
+| extend HasSuspiciousKeyword = iff(RuleParameters has_any (SuspiciousKeywords), true, false)
+// Checking for external forwarding
+| extend ForwardTo = extract("ForwardTo : ([^\\]]+)", 1, RuleParameters)
+| extend HasExternalForward = iff(ForwardTo != "" and not(ForwardTo contains "@yourdomain.com"), true, false)
+| where HasSuspiciousFolder or HasSuspiciousKeyword or HasExternalForward
+| project TimeGenerated, UserId, Operation, ClientIPAddress, RuleParameters, MovesToFolder, ForwardTo
+| sort by TimeGenerated desc

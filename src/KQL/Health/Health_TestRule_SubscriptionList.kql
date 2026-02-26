@@ -1,0 +1,7 @@
+// E2E Test Verification Query
+// Triggers whenever Azure lists subscriptions - easy to trigger manually.
+// Use this in a Scheduled Query Rule to verify the full pipeline.
+
+AzureActivity
+| where OperationNameValue startswith "Microsoft.Resources/subscriptions"
+| where ActivityStatusValue == "Success"

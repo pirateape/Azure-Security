@@ -1,0 +1,222 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+        {
+            "type": 1,
+            "content": {
+                "json": "## Environment Maturity & Compliance\nThis dashboard leverages Microsoft Defender for Cloud data to assess the environment's alignment against major regulatory frameworks (Essential Eight, CIS, NIST). **Note:** Ensure Defender for Cloud Continuous Export is configured to push `SecurityRegulatoryComplianceStates` to this workspace."
+            },
+            "name": "text - Main Header"
+        },
+        {
+            "type": 9,
+            "content": {
+                "version": "KqlParameterItem/1.0",
+                "parameters": [
+                    {
+                        "id": "c1f2b4c8-3c40-4c40-b6ab-1d37e174b5c7",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "TimeRange",
+                        "type": 4,
+                        "isRequired": true,
+                        "value": {
+                            "durationMs": 2592000000
+                        },
+                        "typeSettings": {
+                            "selectableValues": [
+                                {
+                                    "durationMs": 86400000
+                                },
+                                {
+                                    "durationMs": 604800000
+                                },
+                                {
+                                    "durationMs": 1209600000
+                                },
+                                {
+                                    "durationMs": 2592000000
+                                },
+                                {
+                                    "durationMs": 5184000000
+                                },
+                                {
+                                    "durationMs": 7776000000
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "id": "14eb5e81-b541-4c12-8e3b-9a7065f3f01b",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "SubscriptionFilter",
+                        "label": "Subscription",
+                        "type": 6,
+                        "isRequired": true,
+                        "multiSelect": true,
+                        "quote": "'",
+                        "delimiter": ",",
+                        "value": [
+                            "value::all"
+                        ],
+                        "typeSettings": {
+                            "additionalResourceOptions": [
+                                "value::all"
+                            ],
+                            "showDefault": false,
+                            "includeAll": true
+                        }
+                    }
+                ],
+                "style": "pills",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "parameters - Time and Sub"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "### Overall Framework Posture (Passed vs Failed Controls)"
+            },
+            "name": "text - Overview Header"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "securityresources\r\n| where type == \"microsoft.security/regulatorycompliancestandards\"\r\n| where subscriptionId in ({SubscriptionFilter})\r\n| extend Standard = name\r\n| extend Passed = toint(properties.passedControls)\r\n| extend Failed = toint(properties.failedControls)\r\n| extend Unsupported = toint(properties.unsupportedControls)\r\n| extend TotalApplicable = Passed + Failed\r\n| extend ComplianceScore = round(todouble(Passed) / todouble(TotalApplicable) * 100, 2)\r\n| project Standard, ComplianceScore, Passed, Failed, TotalApplicable\r\n| order by ComplianceScore asc",
+                "size": 1,
+                "title": "Compliance Standards Score Chart",
+                "queryType": 1,
+                "resourceType": "microsoft.resourcegraph/queries",
+                "visualization": "barchart"
+            },
+            "customWidth": "50",
+            "name": "query - Framework Chart"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "securityresources\r\n| where type == \"microsoft.security/regulatorycompliancestandards\"\r\n| where subscriptionId in ({SubscriptionFilter})\r\n| extend Standard = name\r\n| extend Passed = toint(properties.passedControls)\r\n| extend Failed = toint(properties.failedControls)\r\n| extend TotalApplicable = Passed + Failed\r\n| extend ScoreDetails = strcat(Passed, \" / \", TotalApplicable, \" Passed\")\r\n| extend CompliancePercent = round(todouble(Passed)/todouble(TotalApplicable)*100, 1)\r\n| project Standard, ScoreDetails, CompliancePercent\r\n| order by CompliancePercent asc",
+                "size": 1,
+                "title": "Compliance Standards Score Details",
+                "queryType": 1,
+                "resourceType": "microsoft.resourcegraph/queries",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "CompliancePercent",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "min": 0,
+                                "max": 100,
+                                "palette": "redGreen"
+                            }
+                        }
+                    ]
+                }
+            },
+            "customWidth": "50",
+            "name": "query - Framework Details Grid"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "### Detailed Assessment Failures\nSelect a standard below to see the specific failing controls."
+            },
+            "name": "text - Detailed Failures Header"
+        },
+        {
+            "type": 9,
+            "content": {
+                "version": "KqlParameterItem/1.0",
+                "parameters": [
+                    {
+                        "id": "e4f8d5b1-1234-4567-cdef-890abcdef123",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "SelectedStandard",
+                        "label": "Filter by Framework",
+                        "type": 2,
+                        "isRequired": false,
+                        "query": "securityresources\r\n| where type == \"microsoft.security/regulatorycompliancestandards\"\r\n| where subscriptionId in ({SubscriptionFilter})\r\n| distinct name\r\n| project value = name, label = name\r\n| order by label asc",
+                        "value": null,
+                        "typeSettings": {
+                            "additionalResourceOptions": []
+                        },
+                        "timeContext": {
+                            "durationMs": 2592000000
+                        },
+                        "queryType": 1,
+                        "resourceType": "microsoft.resourcegraph/queries"
+                    }
+                ],
+                "style": "pills",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "parameters - Standard Filter"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "let StandardFilter = '{SelectedStandard}';\nlet FailedAssessments = securityresources\n| where type == \"microsoft.security/regulatorycompliancestandards/regulatorycompliancecontrols/regulatorycomplianceassessments\"\n| where subscriptionId in ({SubscriptionFilter})\n| where properties.state == \"Failed\"\n| parse id with * \"/regulatoryComplianceStandards/\" Standard \"/regulatoryComplianceControls/\" Control \"/regulatoryComplianceAssessments/\" *\n| extend AssessmentName = name\n| where isempty(StandardFilter) or Standard == StandardFilter;\nFailedAssessments\n| join kind=inner ( \n    securityresources\n    | where type == \"microsoft.security/assessments\"\n    | where subscriptionId in ({SubscriptionFilter})\n    | extend AssessmentName = name\n    | extend AssessmentDisplayName = properties.displayName\n    | extend Severity = tostring(properties.metadata.severity)\n    | project AssessmentName, AssessmentDisplayName, Severity\n) on AssessmentName\n| summarize CountFailedResources = count(), FailedStandard = make_set(Standard) by tostring(AssessmentDisplayName), Severity\n| order by \n    case(Severity == \"High\", 1, Severity == \"Medium\", 2, Severity == \"Low\", 3, 4) asc, CountFailedResources desc\n| project Severity, AssessmentDisplayName, CountFailedResources, FailedStandard",
+                "size": 0,
+                "title": "Failed Assessments Prioritized by Severity",
+                "queryType": 1,
+                "resourceType": "microsoft.resourcegraph/queries",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "Severity",
+                            "formatter": 18,
+                            "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "High",
+                                        "representation": "3",
+                                        "text": "High"
+                                    },
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "Medium",
+                                        "representation": "2",
+                                        "text": "Medium"
+                                    },
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "Low",
+                                        "representation": "1",
+                                        "text": "Low"
+                                    },
+                                    {
+                                        "operator": "Default",
+                                        "thresholdValue": null,
+                                        "representation": "info",
+                                        "text": "Unspecified"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "columnMatch": "CountFailedResources",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "min": 0,
+                                "palette": "orange"
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - Failed Controls"
+        }
+    ],
+    "fallbackResourceIds": [
+        "Azure Monitor"
+    ],
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

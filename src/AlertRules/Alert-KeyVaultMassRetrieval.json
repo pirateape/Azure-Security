@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspaceName": {
+      "type": "string"
+    },
+    "workspaceResourceId": {
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
+      "name": "Key Vault Mass Secret Retrieval",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "Key Vault Mass Secret Retrieval",
+        "description": "Detects potential insider threat or data exfiltration when large numbers of secrets are retrieved",
+        "severity": 1,
+        "enabled": true,
+        "evaluationFrequency": "PT5M",
+        "scopes": [
+          "[parameters('workspaceResourceId')]"
+        ],
+        "windowSize": "PT10M",
+        "criteria": {
+          "allOf": [
+            {
+              "query": "AzureDiagnostics\n| where ResourceProvider == \"MICROSOFT.KEYVAULT\"\n| where OperationName == \"SecretGet\" or OperationName == \"KeyGet\"\n| where ResultSignature == \"OK\"\n| summarize SecretCount = count() by identity_claim_upid_s, ClientIP, bin(TimeGenerated, 10m)\n| where SecretCount > 5",
+              "timeAggregation": "Count",
+              "operator": "GreaterThan",
+              "threshold": 5,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "autoMitigate": false
+      }
+    }
+  ]
+}

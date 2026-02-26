@@ -1,0 +1,15 @@
+// Storage Account Access from Anomalous Geo-Locations
+// Detects successful storage access from countries that are NOT standard for the organization.
+// Requires defining a list of "AllowedCountries".
+
+let AllowedCountries = dynamic(["US", "CA", "UK"]); // EDIT THIS LIST
+
+StorageFileLogs
+| union StorageBlobLogs, StorageTableLogs, StorageQueueLogs
+| where StatusText == "Success"
+| extend ClientIP = CallerIpAddress
+| extend Country = tostring(geo_info_from_ip_address(ClientIP).country)
+| where isnotempty(Country)
+| where Country !in (AllowedCountries)
+| summarize RequestCount = count(), AccountsAccessed = make_set(AccountName) by UserAgentHeader, ClientIP, Country
+| order by RequestCount desc

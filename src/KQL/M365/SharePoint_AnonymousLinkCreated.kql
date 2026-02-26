@@ -1,0 +1,13 @@
+// SharePoint - Anonymous Link Created
+// Detects creation of "Anyone" links in SharePoint/OneDrive
+// These links allow anonymous access without authentication
+
+OfficeActivity
+| where TimeGenerated > ago(24h)
+| where OfficeWorkload in ("SharePoint", "OneDrive")
+| where Operation == "SharingSet"
+| extend LinkType = tostring(parse_json(Parameters).LinkType)
+| where LinkType == "AnonymousAccess"
+| project TimeGenerated, Operation, UserId, ClientIP, SiteUrl = Site_Url, FileName = SourceFileName, LinkType
+| summarize AnonymousLinks = count(), Sites = make_set(SiteUrl), Files = make_set(FileName) by UserId, bin(TimeGenerated, 1h)
+| order by AnonymousLinks desc

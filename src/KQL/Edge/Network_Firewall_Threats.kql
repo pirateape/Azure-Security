@@ -1,0 +1,12 @@
+// Azure Firewall Threat Detection
+// Detects blocked malicious traffic and potential port scanning behavior.
+
+AzureDiagnostics
+| where Category == "AzureFirewallApplicationRule" or Category == "AzureFirewallNetworkRule"
+| where msg_s has "Deny" or msg_s has "Alert"
+| extend ThreatIntel = extract("ThreatIntel: ([^,]+)", 1, msg_s)
+| extend SourceIP = extract("from ([0-9.]+)", 1, msg_s)
+| extend Target = extract("to ([0-9.]+:[0-9]+)", 1, msg_s)
+| summarize BlockCount = count(), Threats = make_set(ThreatIntel) by SourceIP, Target
+| where BlockCount > 5
+| order by BlockCount desc

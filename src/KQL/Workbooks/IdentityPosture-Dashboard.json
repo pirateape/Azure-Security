@@ -1,0 +1,208 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+        {
+            "type": 1,
+            "content": {
+                "json": "## Identity Security Posture Dashboard\n\nThis dashboard leverages Entra ID Sign-in and Audit logs to provide an overview of identity-based attacks and anomalies. It highlights Brute Force targets, Smart Lockout activity, PIM role escalations after hours, and geographical login patterns to assist with Conditional Access gap analysis."
+            },
+            "name": "text - overview"
+        },
+        {
+            "type": 9,
+            "content": {
+                "version": "KqlParameterItem/1.0",
+                "parameters": [
+                    {
+                        "id": "timeRange",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "TimeRange",
+                        "type": 4,
+                        "description": "Select the timeframe for analysis.",
+                        "isRequired": true,
+                        "value": {
+                            "durationMs": 86400000
+                        },
+                        "typeSettings": {
+                            "selectableValues": [
+                                {
+                                    "durationMs": 3600000
+                                },
+                                {
+                                    "durationMs": 14400000
+                                },
+                                {
+                                    "durationMs": 43200000
+                                },
+                                {
+                                    "durationMs": 86400000
+                                },
+                                {
+                                    "durationMs": 172800000
+                                },
+                                {
+                                    "durationMs": 259200000
+                                },
+                                {
+                                    "durationMs": 604800000
+                                },
+                                {
+                                    "durationMs": 1209600000
+                                },
+                                {
+                                    "durationMs": 2419200000
+                                },
+                                {
+                                    "durationMs": 2592000000
+                                },
+                                {
+                                    "durationMs": 5184000000
+                                },
+                                {
+                                    "durationMs": 7776000000
+                                }
+                            ]
+                        },
+                        "timeContext": {
+                            "durationMs": 86400000
+                        }
+                    }
+                ],
+                "style": "pills",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "parameters - time"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "let threshold = 10;\nSigninLogs\n| where TimeGenerated {TimeRange}\n| where ResultType == \"50126\" // Invalid username or password\n| summarize FailedCount = count(), TargetAccounts = dcount(UserPrincipalName) by IPAddress, bin(TimeGenerated, 10m)\n| where TargetAccounts > threshold\n| project TimeGenerated, IPAddress, FailedCount, TargetAccounts\n| order by FailedCount desc",
+                "size": 3,
+                "title": "Password Spray Activity (High Volume Targeters)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "FailedCount",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "red"
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - password spray"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "SigninLogs\n| where TimeGenerated {TimeRange}\n| where ResultType == \"50053\" // Smart Lockout\n| summarize BlockedAttempts = count(), \n            TargetUsers = dcount(UserPrincipalName),\n            Locations = make_set(Location),\n            IPs = make_set(IPAddress)\n            by AppDisplayName, bin(TimeGenerated, 1h)\n| project TimeGenerated, AppDisplayName, BlockedAttempts, TargetUsers, Locations, IPs\n| order by TimeGenerated desc",
+                "size": 3,
+                "title": "Smart Lockout Events (Defensive Blocks)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table"
+            },
+            "name": "query - smart lockout"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AuditLogs\n| where TimeGenerated {TimeRange}\n| where OperationName contains \"Add member to role\"\n| where TargetResources[0].type == \"Role\"\n| extend RoleName = tostring(TargetResources[0].displayName)\n| where RoleName in (\"Global Administrator\", \"Security Administrator\", \"Exchange Administrator\", \"SharePoint Administrator\", \"Privileged Role Administrator\")\n| extend ActivationTime = datetime_part(\"hour\", TimeGenerated)\n| where ActivationTime < 6 or ActivationTime > 22\n| project TimeGenerated, RoleName, ActivatedBy = InitiatedBy.user.userPrincipalName, TargetUser = TargetResources[1].userPrincipalName, IPAddress = tostring(InitiatedBy.user.ipAddress)\n| order by TimeGenerated desc",
+                "size": 3,
+                "title": "PIM High-Privilege Activations (After Hours)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "RoleName",
+                            "formatter": 18,
+                            "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "Global Administrator",
+                                        "representation": "critical",
+                                        "text": "{0}"
+                                    },
+                                    {
+                                        "operator": "Default",
+                                        "thresholdValue": null,
+                                        "representation": "warning",
+                                        "text": "{0}"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - PIM after hours"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "let lookbackWindow  = 180d;\nlet staleThreshold  = 90d;\nlet staleAccounts =\n    SigninLogs\n    | where TimeGenerated between (ago(lookbackWindow) .. ago(staleThreshold))\n    | where ResultType == 0\n    | summarize LastLogin = max(TimeGenerated) by UserPrincipalName;\nSigninLogs\n| where TimeGenerated {TimeRange}\n| where ResultType == 0\n| join kind=inner staleAccounts on UserPrincipalName\n| project TimeGenerated, UserPrincipalName, LastPreviousLogin = LastLogin, IPAddress, Location, AppDisplayName, ConditionalAccessStatus\n| order by TimeGenerated desc",
+                "size": 3,
+                "title": "Stale Account Re-authentication",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table"
+            },
+            "name": "query - stale accounts"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "SigninLogs\n| where TimeGenerated {TimeRange}\n| where ResultType == 0 // Successful logins only\n| summarize CountryCount = dcount(Location), Locations = make_set(Location) by UserPrincipalName\n| extend Recommendation = case(\n    CountryCount == 1, \"Safe to strict Geo-Block (1 Country)\",\n    CountryCount > 5, \"High Risk - Review Travel Pattern\",\n    \"Standard Profile\"\n)\n| order by CountryCount desc",
+                "size": 3,
+                "title": "Geo-Blocking Candidates (Country Count per User)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "Recommendation",
+                            "formatter": 18,
+                            "formatOptions": {
+                                "thresholdsOptions": "colors",
+                                "thresholdsGrid": [
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "Safe to strict Geo-Block (1 Country)",
+                                        "representation": "green",
+                                        "text": "{0}"
+                                    },
+                                    {
+                                        "operator": "Default",
+                                        "thresholdValue": null,
+                                        "representation": "yellow",
+                                        "text": "{0}"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "name": "query - geo block"
+        }
+    ],
+    "fallbackResourceIds": [
+        "Azure Monitor"
+    ],
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

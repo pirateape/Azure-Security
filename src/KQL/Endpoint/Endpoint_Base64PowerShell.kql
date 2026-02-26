@@ -1,0 +1,8 @@
+// Base64 Encoded PowerShell Commands
+// Detects potential obfuscated PowerShell execution.
+
+DeviceProcessEvents
+| where TimeGenerated > ago(24h)
+| where FileName =~ "powershell.exe" or FileName =~ "pwsh.exe"
+| where ProcessCommandLine has_any ("-e", "-en", "-enc", "-encodedcommand")
+| project TimeGenerated, DeviceName, AccountName, ProcessCommandLine, InitiatingProcessFileName

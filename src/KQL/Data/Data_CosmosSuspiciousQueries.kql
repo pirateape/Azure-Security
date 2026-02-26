@@ -1,0 +1,14 @@
+// Data Protection - Cosmos DB Suspicious Queries
+// Detects large or unusual queries to Cosmos DB
+// May indicate data exfiltration attempts
+
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| where Category == "QueryRuntimeStatistics"
+| extend QueryText = tostring(parse_json(properties_sql).querytext)
+| extend DataReadKB = todouble(parse_json(properties_sql).dataReadkb)
+| where DataReadKB > 10240 // 10MB
+| project TimeGenerated, Database = tostring(parse_json(properties_sql).databaseName), Collection = tostring(parse_json(properties_sql).collectionName), QueryText, DataReadKB, RequestCharge = todouble(parse_json(properties_sql).requestCharge), UserAgent = tostring(parse_json(properties_sql).userAgent)
+| summarize TotalReadKB = sum(DataReadKB), QueryCount = count(), Collections = make_set(Collection) by Database, bin(TimeGenerated, 10m)
+| order by TotalReadKB desc

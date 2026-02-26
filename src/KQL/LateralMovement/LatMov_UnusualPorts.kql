@@ -1,0 +1,16 @@
+// Lateral Movement - Unusual Protocol Between Subnets
+// Detects traffic between subnets using unusual protocols
+// May indicate tunneling or covert channels
+
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where ResourceType == "NETWORKSECURITYGROUPS"
+| where OperationName == "NetworkSecurityGroupFlowEvent"
+| extend SrcSubnet = substring(srcIP_s, 0, lastindexof(srcIP_s, "."))
+| extend DstSubnet = substring(destIP_s, 0, lastindexof(destIP_s, "."))
+| where SrcSubnet != DstSubnet
+| where destPort_d in (4444, 5555, 6666, 7777, 8888, 9999, 31337) // Common backdoor ports
+| project TimeGenerated, NSG = Resource, SrcIP = srcIP_s, DstIP = destIP_s, DstPort = destPort_d, Protocol = protocol_s
+| summarize ConnectionCount = count(), UniqueDestinations = dcount(DstIP) by NSG, SrcIP, DstSubnet, DstPort, bin(TimeGenerated, 5m)
+| where ConnectionCount > 5
+| order by ConnectionCount desc

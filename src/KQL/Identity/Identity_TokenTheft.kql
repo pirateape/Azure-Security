@@ -1,0 +1,95 @@
+// Identity - Token Theft / Session Replay Indicators
+// Detects patterns consistent with stolen access/refresh token replay.
+//
+// Attack scenario: Adversary steals a token (via phishing-kit, adversary-in-the-middle
+// proxy, or malware) and replays it from a different IP / location while the victim
+// continues their normal session — creating an anomalous multi-IP session.
+//
+// Three complementary detection surfaces:
+//   (1) Single session ID seen from multiple distinct IPs → textbook token replay
+//   (2) CAE (Continuous Access Evaluation) revocation/interruption events
+//   (3) Non-interactive token refresh from a different country than the interactive sign-in
+//
+// ⚙️  Prerequisites:
+//   - SigninLogs and AADNonInteractiveUserSignInLogs data connectors enabled
+//   - UniqueTokenIdentifier column available (generally available since 2023)
+
+// ──────────────────────────────────────────────────────────────────
+// SURFACE 1: Same CorrelationId (session) used from multiple IPs
+// ──────────────────────────────────────────────────────────────────
+let multiIpSession =
+    union SigninLogs, AADNonInteractiveUserSignInLogs
+    | where TimeGenerated > ago(1h)
+    | where ResultType == 0
+    | where isnotempty(CorrelationId)
+    | summarize
+        IPCount      = dcount(IPAddress),
+        IPs          = make_set(IPAddress),
+        Countries    = make_set(tostring(LocationDetails.countryOrRegion)),
+        CountryCount = dcount(tostring(LocationDetails.countryOrRegion)),
+        FirstSeen    = min(TimeGenerated),
+        LastSeen     = max(TimeGenerated),
+        Apps         = make_set(AppDisplayName)
+      by UserPrincipalName, CorrelationId
+    | where IPCount > 1           // same session, different IPs
+    | extend Indicator = "MultiIP-Session"
+    | project Indicator, UserPrincipalName, CorrelationId,
+              FirstSeen, LastSeen, IPCount, IPs, CountryCount, Countries, Apps;
+
+// ──────────────────────────────────────────────────────────────────
+// SURFACE 2: CAE sign-in interruption / revocation events
+// ──────────────────────────────────────────────────────────────────
+let caeRevocation =
+    SigninLogs
+    | where TimeGenerated > ago(1h)
+    | where ResultType in ("530032",   // Sign-in blocked - suspicious activity (CAE)
+                           "530034",   // User dismissed the CAE interruption
+                           "530035")   // CAE session revoked
+    | project
+        Indicator           = "CAE-Revocation",
+        UserPrincipalName,
+        CorrelationId,
+        FirstSeen           = TimeGenerated,
+        LastSeen            = TimeGenerated,
+        IPCount             = 1,
+        IPs                 = pack_array(IPAddress),
+        CountryCount        = 1,
+        Countries           = pack_array(tostring(LocationDetails.countryOrRegion)),
+        Apps                = pack_array(AppDisplayName);
+
+// ──────────────────────────────────────────────────────────────────
+// SURFACE 3: Token refresh from a different country than interactive sign-in
+// ──────────────────────────────────────────────────────────────────
+let interactiveCountry =
+    SigninLogs
+    | where TimeGenerated > ago(1d)
+    | where ResultType == 0
+    | where IsInteractive == true
+    | summarize InteractiveCountry = make_set(tostring(LocationDetails.countryOrRegion))
+      by UserPrincipalName;
+
+let crossCountryRefresh =
+    AADNonInteractiveUserSignInLogs
+    | where TimeGenerated > ago(1h)
+    | where ResultType == 0
+    | extend RefreshCountry = tostring(LocationDetails.countryOrRegion)
+    | join kind=inner interactiveCountry on UserPrincipalName
+    | where RefreshCountry !in (InteractiveCountry)
+    | summarize
+        IPCount      = dcount(IPAddress),
+        IPs          = make_set(IPAddress),
+        CountryCount = dcount(RefreshCountry),
+        Countries    = make_set(RefreshCountry),
+        FirstSeen    = min(TimeGenerated),
+        LastSeen     = max(TimeGenerated),
+        Apps         = make_set(AppDisplayName)
+      by UserPrincipalName, CorrelationId
+    | extend Indicator = "CrossCountry-TokenRefresh"
+    | project Indicator, UserPrincipalName, CorrelationId,
+              FirstSeen, LastSeen, IPCount, IPs, CountryCount, Countries, Apps;
+
+// ──────────────────────────────────────────────────────────────────
+// Combine all surfaces
+// ──────────────────────────────────────────────────────────────────
+union multiIpSession, caeRevocation, crossCountryRefresh
+| order by FirstSeen desc

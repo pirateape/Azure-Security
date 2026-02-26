@@ -1,0 +1,24 @@
+// Lateral Movement - Cross-Subscription Resource Access
+// Detects when a single caller accesses resources across many resource groups / operations
+// which may indicate unauthorized enumeration or privilege escalation.
+//
+// FIX: Previous version incorrectly queried AzureDiagnostics with Category=="Administrative".
+// Administrative events are written to AzureActivity, not AzureDiagnostics.
+
+AzureActivity
+| where TimeGenerated > ago(24h)
+| where CategoryValue == "Administrative"
+| where ActivityStatusValue == "Success"
+| where OperationNameValue contains "read" or OperationNameValue contains "list" or OperationNameValue contains "get"
+// Exclude background Azure platform noise
+| where Caller !endswith "@serviceprincipal.azure.com"
+| where isnotempty(Caller)
+| summarize
+    AccessCount  = count(),
+    Resources    = dcount(ResourceId),
+    Operations   = make_set(OperationNameValue),
+    IPs          = make_set(CallerIpAddress),
+    ResourceGroups = dcount(ResourceGroup)
+  by Caller, SubscriptionId, bin(TimeGenerated, 1h)
+| where AccessCount > 50 or ResourceGroups > 5
+| order by AccessCount desc

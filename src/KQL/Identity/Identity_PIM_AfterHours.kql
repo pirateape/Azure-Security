@@ -1,0 +1,14 @@
+// Identity - PIM Role Activation Outside Business Hours
+// Detects when users activate high-privilege roles during non-business hours
+// May indicate compromised accounts or unauthorized access
+
+AuditLogs
+| where TimeGenerated > ago(24h)
+| where OperationName contains "Add member to role"
+| where TargetResources[0].type == "Role"
+| extend RoleName = tostring(TargetResources[0].displayName)
+| where RoleName in ("Global Administrator", "Security Administrator", "Exchange Administrator", "SharePoint Administrator", "Privileged Role Administrator")
+| extend ActivationTime = datetime_part("hour", TimeGenerated)
+| where ActivationTime < 6 or ActivationTime > 22
+| project TimeGenerated, RoleName, ActivatedBy = InitiatedBy.user.userPrincipalName, TargetUser = TargetResources[1].userPrincipalName, IPAddress = tostring(InitiatedBy.user.ipAddress)
+| order by TimeGenerated desc

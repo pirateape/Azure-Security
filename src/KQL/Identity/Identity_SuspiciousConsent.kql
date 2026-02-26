@@ -1,0 +1,19 @@
+// Identity - Suspicious Consent Grant to Application
+// Detects when users grant high-privilege permissions to third-party applications
+// Common in OAuth/app consent phishing attacks
+
+AuditLogs
+| where TimeGenerated > ago(24h)
+| where OperationName == "Consent to application"
+| extend ConsentScopes = tostring(parse_json(TargetResources[0].modifiedProperties)[0].newValue)
+| where ConsentScopes contains "RoleManagement.ReadWrite.Directory"
+    or ConsentScopes contains "User.Read.All"
+    or ConsentScopes contains "Application.ReadWrite.All"
+    or ConsentScopes contains "Directory.ReadWrite.All"
+    or ConsentScopes contains "Group.ReadWrite.All"
+    or ConsentScopes contains "Mail.ReadWrite"
+    or ConsentScopes contains "Files.ReadWrite.All"
+| extend AppName = tostring(TargetResources[0].displayName)
+| extend AppId = tostring(TargetResources[0].id)
+| project TimeGenerated, AppName, AppId, ConsentScopes, GrantedBy = InitiatedBy.user.userPrincipalName, IPAddress = tostring(InitiatedBy.user.ipAddress)
+| order by TimeGenerated desc

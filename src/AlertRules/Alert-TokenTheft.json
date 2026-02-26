@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace"
+      }
+    },
+    "workspaceResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Full resource ID of the Log Analytics workspace"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
+      "name": "Token Theft - Suspicious Session Replay",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "Token Theft - Suspicious Session Replay",
+        "description": "Detects potential token theft via three signals: (1) the same CorrelationId observed from multiple distinct IPs within a session window indicating a replayed Bearer token, (2) Continuous Access Evaluation (CAE) revocation codes 530032/530034/530035 triggered by anomalous token use, and (3) non-interactive token refresh requests originating from a country not in the user's recent interactive sign-in history.",
+        "severity": 1,
+        "enabled": true,
+        "evaluationFrequency": "PT5M",
+        "scopes": [
+          "[parameters('workspaceResourceId')]"
+        ],
+        "windowSize": "PT1H",
+        "criteria": {
+          "allOf": [
+            {
+              "query": "// Surface 1: Same CorrelationId observed from multiple distinct IPs (replayed token)\nlet multiIpSameCorrelation =\n    SigninLogs\n    | where isnotempty(CorrelationId)\n    | summarize IPCount = dcount(IPAddress), IPs = make_set(IPAddress, 5),\n                Users = make_set(UserPrincipalName, 2)\n              by CorrelationId\n    | where IPCount > 1\n    | extend DetectionSurface = \"MultiIP-SameCorrelation\",\n             UserPrincipalName = tostring(Users[0]),\n             SessionId = CorrelationId\n    | project DetectionSurface, UserPrincipalName, SessionId, IPCount, IPs;\n// Surface 2: CAE revocation indicating anomalous token use\nlet caeSurface =\n    SigninLogs\n    | where ResultType in (530032, 530034, 530035)\n    | extend DetectionSurface = strcat(\"CAE-Revocation-\", tostring(ResultType))\n    | summarize IPCount = dcount(IPAddress), IPs = make_set(IPAddress, 5)\n              by DetectionSurface, UserPrincipalName, SessionId = CorrelationId\n    | project DetectionSurface, UserPrincipalName, SessionId, IPCount, IPs;\n// Surface 3: Non-interactive token refresh from unseen country\nlet knownCountries =\n    SigninLogs\n    | where IsInteractive == true and ResultType == 0\n    | summarize KnownCountries = make_set(tostring(LocationDetails.countryOrRegion))\n              by UserPrincipalName;\nlet refreshFromUnknownCountry =\n    SigninLogs\n    | where IsInteractive == false\n    | extend AuthDetail = tostring(AuthenticationDetails)\n    | where AuthDetail has_any (\"refreshToken\", \"refresh_token\")\n    | extend RefreshCountry = tostring(LocationDetails.countryOrRegion)\n    | join kind=leftouter (knownCountries) on UserPrincipalName\n    | where array_length(KnownCountries) > 0\n    | where not (set_has_element(KnownCountries, RefreshCountry))\n    | extend DetectionSurface = \"RefreshToken-UnknownCountry\"\n    | summarize IPCount = dcount(IPAddress), IPs = make_set(IPAddress, 5)\n              by DetectionSurface, UserPrincipalName, SessionId = CorrelationId\n    | project DetectionSurface, UserPrincipalName, SessionId, IPCount, IPs;\nunion multiIpSameCorrelation, caeSurface, refreshFromUnknownCountry\n| order by DetectionSurface asc",
+              "timeAggregation": "Count",
+              "dimensions": [
+                {
+                  "name": "UserPrincipalName",
+                  "operator": "Include",
+                  "values": ["*"]
+                },
+                {
+                  "name": "DetectionSurface",
+                  "operator": "Include",
+                  "values": ["*"]
+                }
+              ],
+              "operator": "GreaterThan",
+              "threshold": 0,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "autoMitigate": false,
+        "actions": {
+          "actionGroups": [],
+          "customProperties": {}
+        }
+      }
+    }
+  ]
+}

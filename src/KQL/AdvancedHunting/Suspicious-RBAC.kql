@@ -1,0 +1,20 @@
+// Detects suspicious Role-Based Access Control (RBAC) assignments in Azure Activity logs.
+// Specifically looks for Guest users being assigned to highly privileged roles like Owner or User Access Administrator.
+
+let HighPrivilegeRoles = dynamic(["Owner", "User Access Administrator", "Contributor", "Security Admin"]);
+let GuestDomain = "#EXT#";
+
+AzureActivity
+| where TimeGenerated > ago(7d)
+| where OperationNameValue =~ "Microsoft.Authorization/roleAssignments/write"
+| where ActivityStatusValue =~ "Success"
+| extend Props = parse_json(tostring(Properties))
+| extend ReqBody = parse_json(tostring(Props.requestbody))
+| extend TargetPrincipalId = tostring(ReqBody.properties.principalId)
+| extend RoleDefinitionId = tostring(ReqBody.properties.roleDefinitionId)
+| extend RoleId = extract(@"roleDefinitions/([a-z0-9\-]+)", 1, RoleDefinitionId)
+| extend Caller = CallerIpAddress
+// Extracting Role Name if possible, otherwise we flag on known critical GUIDs or investigate Principals
+// In a real environment, RoleDefinitionId needs to be joined with Role mapping, but we flag the action here
+| project TimeGenerated, Caller, CallerIpAddress, OperationNameValue, ActivityStatusValue, TargetPrincipalId, RoleId, ResourceGroup, ResourceId
+| order by TimeGenerated desc

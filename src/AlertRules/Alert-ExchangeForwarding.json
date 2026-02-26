@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspaceName": {
+      "type": "string"
+    },
+    "workspaceResourceId": {
+      "type": "string"
+    },
+    "tenantDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "Primary UPN domain of the tenant (e.g. contoso.com). Used to detect external forwarding targets."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
+      "name": "Exchange Suspicious Email Forwarding",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "Exchange Suspicious Email Forwarding",
+        "description": "Detects when inbox rules are created to forward emails externally - common BEC technique",
+        "severity": 1,
+        "enabled": true,
+        "evaluationFrequency": "PT5M",
+        "scopes": [
+          "[parameters('workspaceResourceId')]"
+        ],
+        "windowSize": "PT1H",
+        "criteria": {
+          "allOf": [
+            {
+              "query": "[concat('OfficeActivity\\n| where OfficeWorkload == \"Exchange\"\\n| where Operation in (\"New-InboxRule\", \"Set-InboxRule\")\\n| extend ForwardTo = tostring(parse_json(Parameters).ForwardTo)\\n| where isnotempty(ForwardTo) and ForwardTo !contains \"@', parameters('tenantDomain'), '\"')]",
+              "timeAggregation": "Count",
+              "operator": "GreaterThan",
+              "threshold": 0,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "autoMitigate": false
+      }
+    }
+  ]
+}
+

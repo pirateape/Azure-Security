@@ -1,0 +1,112 @@
+{
+  "mode": "Indexed",
+  "policyRule": {
+    "if": {
+      "allOf": [
+        {
+          "field": "type",
+          "equals": "Microsoft.Compute/virtualMachines"
+        },
+        {
+          "field": "Microsoft.Compute/virtualMachines/storageProfile.osDisk.osType",
+          "equals": "Windows"
+        }
+      ]
+    },
+    "then": {
+      "effect": "deployIfNotExists",
+      "details": {
+        "type": "Microsoft.Compute/virtualMachines/extensions",
+        "name": "MicrosoftMonitoringAgent",
+        "existenceCondition": {
+          "allOf": [
+            {
+              "field": "Microsoft.Compute/virtualMachines/extensions/type",
+              "equals": "MicrosoftMonitoringAgent"
+            },
+            {
+              "field": "Microsoft.Compute/virtualMachines/extensions/publisher",
+              "equals": "Microsoft.EnterpriseCloud.Monitoring"
+            }
+          ]
+        },
+        "roleDefinitionIds": [
+          "/providers/Microsoft.Authorization/roleDefinitions/92aaf0da-9dab-42b6-94a3-d43ce8d16293"
+        ],
+        "deployment": {
+          "properties": {
+            "mode": "incremental",
+            "template": {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "vmName": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "workspaceId": {
+                  "type": "string"
+                },
+                "workspaceKey": {
+                  "type": "securestring"
+                }
+              },
+              "resources": [
+                {
+                  "type": "Microsoft.Compute/virtualMachines/extensions",
+                  "apiVersion": "2022-03-01",
+                  "name": "[concat(parameters('vmName'), '/MicrosoftMonitoringAgent')]",
+                  "location": "[parameters('location')]",
+                  "properties": {
+                    "publisher": "Microsoft.EnterpriseCloud.Monitoring",
+                    "type": "MicrosoftMonitoringAgent",
+                    "typeHandlerVersion": "1.0",
+                    "autoUpgradeMinorVersion": true,
+                    "settings": {
+                      "workspaceId": "[parameters('workspaceId')]"
+                    },
+                    "protectedSettings": {
+                      "workspaceKey": "[parameters('workspaceKey')]"
+                    }
+                  }
+                }
+              ]
+            },
+            "parameters": {
+              "vmName": {
+                "value": "[field('name')]"
+              },
+              "location": {
+                "value": "[field('location')]"
+              },
+              "workspaceId": {
+                "value": "[parameters('logAnalyticsWorkspaceId')]"
+              },
+              "workspaceKey": {
+                "value": "[parameters('logAnalyticsWorkspaceKey')]"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "parameters": {
+    "logAnalyticsWorkspaceId": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Log Analytics Workspace ID",
+        "description": "Workspace ID of the Log Analytics workspace"
+      }
+    },
+    "logAnalyticsWorkspaceKey": {
+      "type": "SecureString",
+      "metadata": {
+        "displayName": "Log Analytics Workspace Key",
+        "description": "Primary key of the Log Analytics workspace"
+      }
+    }
+  }
+}

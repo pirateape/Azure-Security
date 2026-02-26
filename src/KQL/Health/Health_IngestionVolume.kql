@@ -1,0 +1,8 @@
+// Ingestion Volume Spike/Drop (Anomaly Detection)
+// Detect if log volume suddenly drops or spikes.
+
+let timeframe = 14d;
+Usage
+| where TimeGenerated > ago(timeframe)
+| summarize DailyMB = sum(Quantity) / 1024 by DataType, bin(TimeGenerated, 1d)
+| render timechart title="Daily Data Volume (GB) by Table"

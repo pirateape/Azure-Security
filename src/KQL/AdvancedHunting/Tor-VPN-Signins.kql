@@ -1,0 +1,12 @@
+// Detects successful logins from known anonymizer networks like Tor or anonymous VPNs
+// utilizing Microsoft Sentinel's Threat Intelligence (TI) or Identity Protection signals.
+
+SigninLogs
+| where TimeGenerated > ago(7d)
+| where ResultType == 0 // Successful Signin
+// Filter on known sign-in risks mapped by Entra ID Identity Protection
+| where RiskState == "atRisk" or RiskLevelDuringSignIn in ("high", "medium")
+| extend RiskEventTypes = tostring(RiskEventTypes)
+| where RiskEventTypes has "anonymousIPAddress" or RiskEventTypes has "malwareInfectedIPAddress" or RiskEventTypes has "suspiciousBrowser"
+| project TimeGenerated, UserPrincipalName, IPAddress, Location, RiskLevelDuringSignIn, RiskEventTypes, AppDisplayName, ClientAppUsed, UserAgent
+| order by TimeGenerated desc

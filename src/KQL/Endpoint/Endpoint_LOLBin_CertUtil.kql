@@ -1,0 +1,8 @@
+// LOLBin Execution (CertUtil Download)
+// Detects certutil being used to download files (common malware technique).
+
+DeviceProcessEvents
+| where TimeGenerated > ago(24h)
+| where FileName =~ "certutil.exe"
+| where ProcessCommandLine has_any ("-urlcache", "-split", "-f")
+| project TimeGenerated, DeviceName, AccountName, ProcessCommandLine

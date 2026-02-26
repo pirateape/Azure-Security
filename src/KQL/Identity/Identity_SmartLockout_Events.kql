@@ -1,0 +1,14 @@
+// Smart Lockout Events (Defensive Action)
+// Detects when Entra ID Smart Lockout is actively blocking malicious attempts (Result 50053).
+// Helps confirm the defense is working or if valid users are caught in it.
+
+SigninLogs
+| where TimeGenerated > ago(24h)
+| where ResultType == "50053" // Account is locked because user tried too many times (Smart Lockout)
+| summarize BlockedAttempts = count(), 
+            TargetUsers = dcount(UserPrincipalName),
+            Locations = make_set(Location),
+            IPs = make_set(IPAddress)
+            by AppDisplayName, bin(TimeGenerated, 1h)
+| project TimeGenerated, AppDisplayName, BlockedAttempts, TargetUsers, Locations, IPs
+| order by TimeGenerated desc

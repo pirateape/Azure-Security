@@ -1,0 +1,9 @@
+// PIM Activation for Critical Role
+// Monitor who is elevating to Global Admin.
+
+AuditLogs
+| where TimeGenerated > ago(24h)
+| where OperationName == "Add member to role in PIM completed (permanent)"
+| extend RoleName = tostring(TargetResources[0].displayName)
+| where RoleName has "Global Administrator" or RoleName has "Privileged Role Administrator"
+| project TimeGenerated, InitiatedBy = Identity, RoleName, TargetUser = tostring(TargetResources[2].displayName)

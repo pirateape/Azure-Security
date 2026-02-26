@@ -1,0 +1,14 @@
+// Teams - External User Added to Private Team
+// Detects when external (guest) users are added to Teams
+// Monitor for unexpected external access to sensitive teams
+
+OfficeActivity
+| where TimeGenerated > ago(24h)
+| where OfficeWorkload == "MicrosoftTeams"
+| where Operation == "MemberAdded"
+| extend MemberType = tostring(parse_json(Members)[0].MemberType)
+| extend UPN = tostring(parse_json(Members)[0].UPN)
+| where MemberType == "Guest" or UPN contains "#EXT#"
+| project TimeGenerated, Operation, UserWhoAdded = UserId, TeamName = tostring(Parameters.TeamName), GuestUser = UPN, AddedByIP = ClientIP
+| summarize GuestAdditions = count(), Teams = make_set(TeamName), AddedByIPs = make_set(AddedByIP) by UserWhoAdded, bin(TimeGenerated, 1h)
+| order by GuestAdditions desc

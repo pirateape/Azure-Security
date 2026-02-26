@@ -1,0 +1,8 @@
+// New Public IP via Network Interface
+// Detects creation of public IPs attached to NICs (exposing VMs).
+
+AzureActivity
+| where TimeGenerated > ago(24h)
+| where OperationNameValue =~ "Microsoft.Network/networkInterfaces/write"
+| where Properties has "publicIPAddresses"
+| project TimeGenerated, Caller, ResourceGroup, ResourceId, Properties

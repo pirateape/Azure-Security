@@ -1,0 +1,27 @@
+// Exchange Online - Suspicious Mailbox Forwarding Rule Created
+// Detects when a user creates an inbox rule that forwards emails externally
+// This is a common Business Email Compromise (BEC) technique
+//
+// ⚙️  ACTION REQUIRED: Set your tenant's primary domain below.
+
+let TenantDomain = "contoso.com";  // EDIT: Replace with your organisation's primary UPN domain
+
+OfficeActivity
+| where TimeGenerated > ago(1h)
+| where OfficeWorkload == "Exchange"
+| where Operation in ("New-InboxRule", "Set-InboxRule")
+| extend ForwardTo = tostring(parse_json(Parameters).ForwardTo)
+| extend ForwardAsAttachment = tostring(parse_json(Parameters).ForwardAsAttachmentTo)
+| extend RedirectTo = tostring(parse_json(Parameters).RedirectTo)
+| where isnotempty(ForwardTo) or isnotempty(ForwardAsAttachment) or isnotempty(RedirectTo)
+| extend ExternalForward = case(
+    ForwardTo contains "@" and ForwardTo !contains strcat("@", TenantDomain), ForwardTo,
+    ForwardAsAttachment contains "@" and ForwardAsAttachment !contains strcat("@", TenantDomain), ForwardAsAttachment,
+    RedirectTo contains "@" and RedirectTo !contains strcat("@", TenantDomain), RedirectTo,
+    ""
+)
+| where isnotempty(ExternalForward)
+| project TimeGenerated, Operation, UserId, ClientIP, ExternalForward, RuleName = tostring(parse_json(Parameters).Name)
+| summarize ForwardRules = count(), ExternalDestinations = make_set(ExternalForward), IPs = make_set(ClientIP) by UserId, bin(TimeGenerated, 5m)
+| where ForwardRules >= 1
+| order by TimeGenerated desc

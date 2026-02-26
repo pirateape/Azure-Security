@@ -1,0 +1,15 @@
+// Potential Denial-of-Service (Lockout) Attack
+// Detects a single user being targeted by excessive failures from MANY different IPs.
+// This pattern often leads to account lockout (DoS) for the valid user.
+
+let timeframe = 1h;
+let threshold_IPs = 5;
+let threshold_Failures = 20;
+
+SigninLogs
+| where TimeGenerated > ago(timeframe)
+| where ResultType != 0 // Failures
+| summarize FailureCount = count(), UniqueIPs = dcount(IPAddress) by UserPrincipalName
+| where UniqueIPs > threshold_IPs and FailureCount > threshold_Failures
+| project UserPrincipalName, FailureCount, UniqueIPs
+| order by UniqueIPs desc

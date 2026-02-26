@@ -1,0 +1,7 @@
+// "The Pulse" - Last Log Received Check
+// Quickly see the last time logs arrived for critical tables.
+
+search in (Heartbeat, SigninLogs, AzureActivity, SecurityEvent) *
+| summarize LastLog = max(TimeGenerated) by $table
+| extend HealthStatus = iff(LastLog > ago(1h), "✅ Healthy", "⚠️ Lagging")
+| order by LastLog asc

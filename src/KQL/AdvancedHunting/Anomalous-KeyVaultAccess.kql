@@ -1,0 +1,17 @@
+// Detects anomalous Key Vault access patterns.
+// Highlights excessive SecretGet or VaultGet operations by a single IP or caller within a short timeframe.
+
+let TimeFrame = 1h;
+let AccessThreshold = 50;
+
+AzureDiagnostics
+| where TimeGenerated > ago(TimeFrame)
+| where ResourceProvider == "MICROSOFT.KEYVAULT"
+| where OperationName in ("SecretGet", "VaultGet", "KeyGet")
+| summarize AccessCount = count(), 
+            ResourcesAccessed = make_set(id),
+            DistinctResources = dcount(id) 
+            by CallerIPAddress, identity_claim_appid_g, identity_claim_upn_s
+| where AccessCount >= AccessThreshold
+| project CallerIPAddress, AppId = identity_claim_appid_g, UserPrincipalName = identity_claim_upn_s, AccessCount, DistinctResources, ResourcesAccessed
+| order by AccessCount desc

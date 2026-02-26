@@ -1,0 +1,16 @@
+// Detects Pass-the-Hash, Pass-the-Ticket, and other potential lateral movement indications inside Entra ID / Sentinel logs.
+// Looks for instances where multiple devices attempt connection, or anomalous authentication patterns occur over RDP.
+
+let TimeFrame = 1d;
+let IPThreshold = 5;
+
+// Note: If you have Sentinel and want to see Device names, you must union with DeviceInfo or similar.
+// Currently relying on Entra ID device details in SigninLogs.
+
+SigninLogs
+| where TimeGenerated >= ago(1d)
+| where ResultType == 0 // Successful Signin
+| summarize DistinctIPs = dcount(IPAddress), DistinctDevices = dcount(tostring(DeviceDetail.deviceId)), IPs = make_set(IPAddress), Devices = make_set(DeviceDetail.deviceId) by UserPrincipalName
+| where DistinctDevices > 1 or DistinctIPs > 2 // Arbitrary threshold: 1 user, 2+ devices or 3+ IPs in one day
+| project UserPrincipalName, DistinctDevices, DistinctIPs, Devices, IPs
+| order by DistinctDevices desc

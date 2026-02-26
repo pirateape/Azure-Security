@@ -1,0 +1,47 @@
+{
+  "mode": "Indexed",
+  "policyRule": {
+    "if": {
+      "allOf": [
+        {
+          "field": "type",
+          "equals": "Microsoft.Network/networkSecurityGroups"
+        },
+        {
+          "field": "Microsoft.Network/networkSecurityGroups/securityRules[*]",
+          "notLike": "*"
+        }
+      ]
+    },
+    "then": {
+      "effect": "modify",
+      "details": {
+        "roleDefinitionIds": [
+          "/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"
+        ],
+        "operations": [
+          {
+            "operation": "addOrReplace",
+            "field": "Microsoft.Network/networkSecurityGroups/securityRules",
+            "value": [
+              {
+                "name": "DenyAllInbound",
+                "properties": {
+                  "protocol": "*",
+                  "sourceAddressPrefix": "*",
+                  "destinationAddressPrefix": "*",
+                  "access": "Deny",
+                  "direction": "Inbound",
+                  "priority": 4096,
+                  "sourcePortRange": "*",
+                  "destinationPortRange": "*"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "parameters": {}
+}

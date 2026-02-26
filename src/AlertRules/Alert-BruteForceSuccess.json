@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace"
+      }
+    },
+    "workspaceResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Full resource ID of the Log Analytics workspace"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-03-15-preview",
+      "name": "Brute Force Success - Login After Mass Failures",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "Brute Force Success - Login After Mass Failures",
+        "description": "Detects a successful sign-in from an IP address that previously generated more than 20 failed authentication attempts within 24 hours. Indicates a brute force attack that succeeded.",
+        "severity": 1,
+        "enabled": true,
+        "evaluationFrequency": "PT15M",
+        "scopes": [
+          "[parameters('workspaceResourceId')]"
+        ],
+        "windowSize": "P1D",
+        "criteria": {
+          "allOf": [
+            {
+              "query": "let bruteForceIPs =\n    SigninLogs\n    | where ResultType != 0\n    | summarize FailureCount = count() by IPAddress\n    | where FailureCount > 20\n    | project IPAddress;\nSigninLogs\n| where ResultType == 0\n| where IPAddress in (bruteForceIPs)\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName",
+              "timeAggregation": "Count",
+              "dimensions": [
+                {
+                  "name": "UserPrincipalName",
+                  "operator": "Include",
+                  "values": ["*"]
+                },
+                {
+                  "name": "IPAddress",
+                  "operator": "Include",
+                  "values": ["*"]
+                }
+              ],
+              "operator": "GreaterThan",
+              "threshold": 0,
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "autoMitigate": false,
+        "actions": {
+          "actionGroups": [],
+          "customProperties": {}
+        }
+      }
+    }
+  ]
+}
