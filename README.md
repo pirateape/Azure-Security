@@ -104,6 +104,7 @@ This repository consolidates KQL threat hunting queries, PowerShell audit script
 | `Audit-NetworkSecurity.ps1` | NSG rules, public IPs, flow logs, risky configurations |
 | `Audit-PublicResources.ps1` | Publicly accessible KeyVaults/Storage with auto-remediation |
 | `Audit-RBAC-Permissions.ps1` | **RBAC audit**: High privilege assignments, classic admins, custom roles, orphaned assignments, resource locks |
+| `Audit-AppServiceConfig.ps1` | WebApp & FunctionApp configurations: TLS 1.2+, HTTPS Only, VNET Integration, and Managed Identities |
 
 ### Security Operations
 
@@ -244,6 +245,21 @@ This repository consolidates KQL threat hunting queries, PowerShell audit script
 - `Alert-KeyVaultMassRetrieval.json`
 - `Alert-ExchangeForwarding.json`
 - `Alert-SuspiciousConsent.json`
+
+---
+
+## 📈 Sentinel Dashboards (Workbooks) (4)
+
+These JSON workbooks provide visual threat hunting and operational overviews for Azure Sentinel, built on top of the repository's KQL queries and Azure Resource Graph:
+
+| Dashboard | Focus Area | Data Sources |
+|-----------|------------|--------------|
+| `IdentityPosture-Dashboard.json` | Entra ID risk, MFA compliance, risky sign-ins, and legacy auth | `SigninLogs`, `AuditLogs`, `AADUserRiskEvents` |
+| `M365Threats-Dashboard.json` | Exchange forwarding, SharePoint mass downloads, Teams anomalies | `OfficeActivity` |
+| `ComplianceMaturity-Dashboard.json` | Regulatory compliance status (CIS, NIST) mapped to Defender | Azure Resource Graph (`microsoft.security/regulatorycompliance...`) |
+| `SOCOperations-Dashboard.json` | Alert triage, incident volume, Sentinel health, rule efficacy | `SecurityIncident`, `SecurityAlert`, `Usage` |
+
+**Deployment:** Import directly via the Azure Sentinel Workbooks blade or using the provided ARM/Bicep deployments.
 
 ---
 

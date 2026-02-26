@@ -21,6 +21,7 @@ graph TD
         
         Tables -->|Query| Hunting[KQL Hunting Queries]
         Hunting -->|Trigger| Alert[Incidents]
+        Tables -->|Visualize| Workbooks[Azure Workbooks / Dashboards]
         
         Alert -->|Orchestrate| LogicApp[SOAR Playbooks]
     end
