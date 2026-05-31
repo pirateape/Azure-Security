@@ -1,8 +1,11 @@
-# Azure Sentinel Defense-in-Depth Repository
+# Azure Security Audit Framework
+
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/pirateape/Azure-Security/actions/workflows/ci.yml/badge.svg)](https://github.com/pirateape/Azure-Security/actions/workflows/ci.yml)
 
 **A comprehensive security library for Azure infrastructure, Entra ID (Identity), M365, and Edge security.**
 
-This repository consolidates KQL threat hunting queries, PowerShell audit scripts, Azure Policy definitions, Bicep templates, and best practice knowledge into a single, deployable structure.
+This repository consolidates KQL threat hunting queries, PowerShell audit scripts, Azure Policy definitions, Bicep templates, Sentinel alert rules, Logic App playbooks, and operational runbooks into a single, deployable structure. All content is **MIT licensed** — use it freely in your own environment.
 
 ## 📂 Repository Structure
 
@@ -16,7 +19,8 @@ This repository consolidates KQL threat hunting queries, PowerShell audit script
 │   │   ├── Data/               # KeyVault, Storage, Cosmos DB, SQL monitoring
 │   │   ├── Health/             # Ingestion checks, Silent connectors
 │   │   ├── M365/               # Teams, Exchange, SharePoint detections
-│   │   └── LateralMovement/    # VM-to-VM, Cross-subnet, Cross-subscription movement
+│   │   ├── LateralMovement/    # VM-to-VM, Cross-subnet, Cross-subscription movement
+│   │   └── AdvancedHunting/    # Cross-domain hunting queries (RBAC, Tor, Lateral)
 │   ├── PowerShell/             # Audit & Compliance Scripts
 │   │   ├── Identity_Audit/     # Comprehensive Identity Security Audits
 │   │   ├── M365_Audit/         # Exchange, Teams, SharePoint, Purview
@@ -31,7 +35,8 @@ This repository consolidates KQL threat hunting queries, PowerShell audit script
 │   │   ├── Modify/             # Auto-remediation policies
 │   │   └── DeployIfNotExists/  # DINE policies (Flow Logs, Diagnostics)
 │   ├── Bicep/                  # Infrastructure as Code
-│   │   └── Modules/            # Secure baseline modules
+│   │   ├── Modules/            # Secure baseline modules
+│   │   └── Templates/          # Deployment templates & parameters
 │   ├── AlertRules/             # Defender/Sentinel Alert Rules
 │   └── Workbooks/              # Sentinel Dashboards
 ├── docs/                       # Knowledge Base
@@ -387,4 +392,13 @@ All contributions should:
 
 ---
 
-*Created by PirateApe | Comprehensive Azure & M365 Security Audit Framework v2.0*
+## 📄 License
+
+**MIT** — Use it freely in your own environment. See [LICENSE](LICENSE) for details.
+
+## 🔗 Related
+
+- [ApeGuard](https://github.com/pirateape/ape-guard) — One-command local security posture assessment
+- [Unified Zero Trust Framework](https://github.com/pirateape/unified-zero-trust-framework) — 8-pillar maturity model aligned to CISA ZTMM
+
+*Azure Security Audit Framework v2.0*

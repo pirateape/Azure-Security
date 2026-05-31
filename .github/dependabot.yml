@@ -1,0 +1,21 @@
+# Dependabot configuration
+# Keeps GitHub Actions up-to-date for this Azure security repository
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Australia/Brisbane
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
