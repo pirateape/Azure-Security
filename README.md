@@ -435,6 +435,7 @@ All contributions should:
 ## 🔗 Related
 
 - [ApeGuard](https://github.com/pirateape/ape-guard) — One-command local security posture assessment
+- [ApeGuard GitHub Action](https://github.com/pirateape/apeguard-action) — Run ApeGuard scans in CI/CD with SARIF upload
 - [Unified Zero Trust Framework](https://github.com/pirateape/unified-zero-trust-framework) — 8-pillar maturity model aligned to CISA ZTMM
 
 ---
